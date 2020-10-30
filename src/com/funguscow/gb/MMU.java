@@ -1,0 +1,372 @@
+package com.funguscow.gb;
+
+import javax.imageio.IIOException;
+import java.io.IOException;
+import java.io.InputStream;
+
+/**
+ * Handles memory access, bank switching, and memory mapped IO and registers
+ */
+public class MMU {
+
+    Machine machine;
+    private int ram_size;
+    private byte[] rom;
+    private byte[] internal_ram;
+    private byte[] external_ram;
+    private byte[] zero_page;
+    private int rom_bank;
+    private int num_rom_banks;
+    private int ram_bank;
+    private int num_ram_banks;
+    private int mbc_type;
+    private boolean mbc1_ram_32k;
+    private boolean ram_enabled;
+    private int mbc3_rtc_register;
+    private int mbc3_rtc_latch;
+    private int seconds;
+    private int minutes;
+    private int hours;
+    private int days;
+    private boolean mbc3_halt_rtc;
+
+    /**
+     * Initialize according to power up seqeunce
+     * @param machine Parent machine
+     * @param mbc_type Cartridge type
+     * @param num_rom_banks Number of ROM banks
+     * @param num_ram_banks Number of RAM banks
+     * @param ram_size Size in bytes of RAM
+     */
+    public MMU(Machine machine, int mbc_type, int num_rom_banks, int num_ram_banks, int ram_size){
+        this.machine = machine;
+        this.mbc_type = mbc_type;
+        this.num_rom_banks = num_rom_banks;
+        this.num_ram_banks = num_ram_banks;
+        this.ram_size = ram_size;
+        rom = new byte[num_rom_banks * 0x4000];
+        external_ram = new byte[ram_size];
+        internal_ram = new byte[0x2000];
+        zero_page = new byte[128];
+        // Startup sequence
+        write8(0xff0, 0);
+        write8(0xff06, 0);
+        write8(0xff07, 0);
+        /* TODO write initial sound values */
+        write8(0xff40, 0x91);
+        write8(0xff42, 0);
+        write8(0xff43, 0);
+        write8(0xff45, 0);
+        write8(0xff47, 0xfc);
+        write8(0xff48, 0xff);
+        write8(0xff49, 0xff);
+        write8(0xfffa, 0);
+        write8(0xff4b, 0);
+        write8(0xffff, 0);
+        System.out.println(ram_size + " byte of RAM across " + num_ram_banks + " banks");
+        System.out.println(num_rom_banks + " banks of ROM using MBC #" + mbc_type);
+    }
+
+    /**
+     * Load from an arry
+     * @param ROM Array of bytes  of ROM data
+     * @param offset WHere to load to
+     * @param len How many bytes to load
+     */
+    public void load_ROM(byte[] ROM, int offset, int len){
+        System.arraycopy(ROM, 0, rom, offset, len);
+    }
+
+    /**
+     * Load from an input stream
+     * @param ROM InputStream of ROM
+     * @param offset Where to load to
+     * @param len How many bytes
+     * @throws IOException
+     */
+    public void load_ROM(InputStream ROM, int offset, int len) throws IOException {
+        ROM.read(rom, offset, len);
+    }
+
+    /**
+     * Directly transfer memory from ROM/RAM to OAM
+     * @param base Base address for DMA
+     */
+    public void DMA(int base){
+        for(int i = 0; i < 160; i ++){
+            write8(0xfe00 + i, read8(base + i));
+        }
+    }
+
+    /**
+     * Read 1 byte from address
+     * @param address Address of byte to read
+     * @return The byte at [address]
+     */
+    public int read8(int address){
+        switch(address >> 13){
+            case 0:
+            case 1: //0x0000 - 0x3fff
+                return rom[address] & 0xff;
+            case 2:
+            case 3: //0x4000 - 0x7fff
+                return rom[(address & 0x3fff) + (rom_bank << 14)] & 0xff;
+            case 4: //0x8000 - 0x9fff
+                return machine.gpu.read(address);
+            case 5: //0xa000 - 0xbfff
+                switch(mbc_type){
+                    case 1:
+                    case 5: // Just write RAM if it's there
+                        if(ram_enabled){
+                            int ram_addr = (address & 0x1fff) + (ram_bank << 13);
+                            if(ram_addr < ram_size)
+                                return external_ram[ram_addr] & 0xff;
+                        }
+                        return 0;
+                    case 2: // Write low 4 bits of "RAM"
+                        if(ram_enabled && address < 0xa200){
+                            return external_ram[address & 0x1ff] & 0xf;
+                        }
+                        return 0;
+                    case 3: // Either write RAM or set a register
+                        switch(mbc3_rtc_register){
+                            case 8:
+                                return seconds;
+                            case 9:
+                                return minutes;
+                            case 10:
+                                return hours;
+                            case 11:
+                                return days & 0xff;
+                            case 12:
+                                return (days >> 8) | (mbc3_halt_rtc ? 0x40 : 0);
+                        }
+                        return 0;
+                }
+                return 0;
+            case 6: //0xc000 - 0xdfff
+            case 7: //0xe000 - 0xffff
+                if(address < 0xfe00)
+                    return internal_ram[address & 0x1fff]; // Echo of RAM
+                else if(address < 0xfea0){
+                    return machine.gpu.read(address);
+                }
+                else if(address < 0xff00) return 0; // Unusable
+                else if(address < 0xff4c){
+                    if((address & ~3) == 0xff04)
+                        return machine.timer.read(address & 3);
+                    else if(address >= 0xff40 && address != 0xff46)
+                        return machine.gpu.read(address);
+                    else if(address >= 0xff10 && address < 0xff40)
+                        return machine.soundBoard.read(address);
+                    else {
+                        switch (address & 0xff) {
+                            case 0x00: // 0xff00 - P1/Keypad
+                                return machine.keypad.read();
+                            case 0x0f: // 0xff0f - IF
+                                return machine.interrupts_fired;
+                        }
+                    }
+                    return 0;
+                }
+                else if(address < 0xff80) return 0; // Unusable
+                else if(address != 0xffff) // Zero-page
+                    return zero_page[address & 0x1f];
+                else return machine.interrupts_enabled;
+        }
+        return 0;
+    }
+
+    /**
+     * Read 1 x 2-byte word from address
+     * @param address Address of word (reads address, address + 1)
+     * @return 2 bytes at [address, address + 1], little-endian
+     */
+    public int read16(int address){
+        return read8(address) + (read8(address + 1) << 8);
+    }
+
+    /**
+     * Write one byte to [address]
+     * @param address Address to which to write
+     * @param value Value to write
+     */
+    public void write8(int address, int value){
+        switch(address >> 13){
+            case 0: //0x0000-0x1fff
+                switch(mbc_type){
+                    case 1: // Enable RAM if low nibble is 0xa, else disable
+                    case 3:
+                    case 5:
+                        ram_enabled = (value & 0xf) == 0xa; break;
+                    case 2: // Enable/disable RAM if high address byte is even
+                        if(((address >> 8) & 1) == 0)
+                            ram_enabled = (value & 0xf) == 0xa;
+                        break;
+                }
+                break;
+            case 1: //0x2000-0x3fff
+                switch(mbc_type){
+                    case 1: // Set ROM bank, or at least lower 5 bits
+                        value &= 0x1f;
+                        if(value == 0)
+                            value = 1;
+                        rom_bank &= ~0x1f;
+                        rom_bank |= value;
+                        break;
+                    case 2: // Set ROM bank, but only if high address byte is odd
+                        value &= 0xf;
+                        if(value == 0)
+                            value = 1;
+                        if(((address >> 8) & 1) == 1)
+                            rom_bank = value;
+                        break;
+                    case 3: // Set ROM bank
+                        value &= 0x7f;
+                        if(value == 0)
+                            value = 1;
+                        rom_bank = value;
+                        break;
+                    case 5: // Set low 8 bits of ROM bank (allow 0)
+                        if((address & 0x1000) == 0) {
+                            rom_bank &= ~0xff;
+                            rom_bank |= value;
+                        }else{
+                            rom_bank &= 0xff;
+                            rom_bank |= (value & 1) << 8;
+                        }
+                        break;
+                }
+                rom_bank %= num_rom_banks; // Ignore pins too high
+                break;
+            case 2: //0x4000-0x5fff
+                switch(mbc_type){
+                    case 1: // Write high 2 bits of ROM bank, or RAM bank
+                        value &= 0x3;
+                        if(mbc1_ram_32k)
+                            ram_bank = value;
+                        else {
+                            rom_bank &= 0x1f;
+                            rom_bank |= value << 5;
+                        }
+                        break;
+                    case 3: // Write RAM bank if <=3 or enable RTC registers
+                        if(value <= 3) {
+                            ram_bank = value;
+                            mbc3_rtc_register = 0;
+                        }
+                        else if(value >= 8 && value <= 0xc)
+                            mbc3_rtc_register = value;
+                        break;
+                    case 5: // Write RAM bank
+                        ram_bank = value & 0x3;
+                        break;
+                }
+                ram_bank %= num_ram_banks;
+                break;
+            case 3: //0x6000 - 0x7fff
+                switch(mbc_type){
+                    case 1: // Set ROM/RAM mode
+                        mbc1_ram_32k = (value & 1) != 0;
+                        if(mbc1_ram_32k) {
+                            rom_bank &= 0x1f;
+                            rom_bank %= num_rom_banks;
+                        }
+                        else
+                            ram_bank = 0;
+                        break;
+                    case 3: // Latch RTC
+                        if((mbc3_rtc_latch & 1) == 0 && value == 0)
+                            mbc3_rtc_latch ++;
+                        else if((mbc3_rtc_latch & 1) != 0 && value == 1)
+                            mbc3_rtc_latch = (mbc3_rtc_latch + 1) & 3;
+                        else
+                            mbc3_rtc_latch &= ~1;
+                        break;
+                }
+                break;
+            case 4: //0x8000 - 0x9fff
+                machine.gpu.write(address, value);
+                break;
+            case 5: //0xa000 - 0xbfff
+                switch(mbc_type){
+                    case 1:
+                    case 5: // Just write RAM if it's there
+                        if(ram_enabled){
+                            int ram_addr = (address & 0x1fff) + (ram_bank << 13);
+                            if(ram_addr < ram_size)
+                                external_ram[ram_addr] = (byte)(value & 0xff);
+                        }
+                        break;
+                    case 2: // Write low 4 bits of "RAM"
+                        if(ram_enabled && address < 0xa200){
+                            external_ram[address & 0x1ff] = (byte)(value & 0xf);
+                        }
+                        break;
+                    case 3: // Either write RAM or set a register
+                        switch(mbc3_rtc_register){
+                            case 8:
+                                seconds = value % 60; break;
+                            case 9:
+                                minutes = value % 60; break;
+                            case 10:
+                                hours = value % 24; break;
+                            case 11:
+                                days &= ~0xff; days |= value; break;
+                            case 12:
+                                days &= 0xff;
+                                days |= (value & 1) << 8;
+                                mbc3_halt_rtc = (value & 0x40) != 0;
+                                break;
+                        }
+                        break;
+                }
+                break;
+            case 6: // 0xc000 - 0xdfff Internal RAM
+            case 7: // 0xe000 - 0xffff Echo of RAM + later data
+                if(address < 0xfe00)
+                    internal_ram[address & 0x1fff] = (byte)(value & 0xff);
+                else if(address < 0xfea0){
+                    machine.gpu.write(address, value);
+                }
+                else if(address < 0xff00); // Unusable
+                else if(address < 0xff4c){
+                    if((address & ~3) == 0xff04)
+                        machine.timer.write(address & 3, value);
+                    else if(address >= 0xff40 && address != 0xff46)
+                        machine.gpu.write(address, value);
+                    else if(address >= 0xff10 && address < 0xff40)
+                        machine.soundBoard.write(address, value);
+                    else{
+                        switch(address & 0xff){
+                            case 0x00: // P1 - Keypad
+                                machine.keypad.write(value); break;
+                            case 0x0f: // 0xff0f - IF
+                                machine.interrupts_fired = value; break;
+                            case 0x46: // 0xff46 - DMA
+                                DMA(value); break;
+                        }
+                    }
+                }
+                else if(address < 0xff80); // Unusable
+                else if(address == 0xffff){ // Interrupt enable register
+                    machine.interrupts_enabled = value;
+                }
+                else{ // 0xff80 - 0xfffe, Zero Page Ram
+                    zero_page[address & 0x7f] = (byte)(value & 0xff);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Write 1 x 2-word byte to [address]
+     * @param address Address to write (low)
+     * @param value Little-endian 2-byte value
+     */
+    public void write16(int address, int value){
+        write8(address, value & 0xff);
+        write8(address + 1, value >> 8);
+    }
+
+}
