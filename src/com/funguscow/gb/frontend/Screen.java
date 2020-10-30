@@ -44,12 +44,10 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
     }
 
     public void putPixel(int x, int y, int pixel){
-        System.out.println("Drawn pixel");
         image.setRGB(x, y, pixel);
     }
 
     public void update(){
-        System.out.println("Update screen");
         Graphics2D g = (Graphics2D) strategy.getDrawGraphics();
         g.drawImage(image, 0, 0, this);
         g.dispose();

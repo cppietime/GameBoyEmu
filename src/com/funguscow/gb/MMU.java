@@ -45,6 +45,8 @@ public class MMU {
         this.num_ram_banks = num_ram_banks;
         this.ram_size = ram_size;
         rom = new byte[num_rom_banks * 0x4000];
+        rom_bank = 1;
+        ram_bank = 0;
         external_ram = new byte[ram_size];
         internal_ram = new byte[0x2000];
         zero_page = new byte[128];
@@ -147,7 +149,7 @@ public class MMU {
             case 6: //0xc000 - 0xdfff
             case 7: //0xe000 - 0xffff
                 if(address < 0xfe00)
-                    return internal_ram[address & 0x1fff]; // Echo of RAM
+                    return internal_ram[address & 0x1fff] & 0xff; // Echo of RAM
                 else if(address < 0xfea0){
                     return machine.gpu.read(address);
                 }
@@ -171,7 +173,7 @@ public class MMU {
                 }
                 else if(address < 0xff80) return 0; // Unusable
                 else if(address != 0xffff) // Zero-page
-                    return zero_page[address & 0x1f];
+                    return zero_page[address & 0x1f] & 0xff;
                 else return machine.interrupts_enabled;
         }
         return 0;

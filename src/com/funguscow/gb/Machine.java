@@ -105,7 +105,7 @@ public class Machine {
             e.printStackTrace();
             System.exit(3);
         }
-        cpu = new CPU(MachineMode.GAMEBOY, mmu);
+        cpu = new CPU(MachineMode.GAMEBOY, mmu, new Debugger());
     }
 
     /**
@@ -118,7 +118,7 @@ public class Machine {
     }
 
     public static void main(String[] args){
-        Machine machine = new Machine(new File(args[0]));
+        Machine machine = new Machine(new File("D:/Games/GBA/gbtest/cpu_instrs/individual/10-bit ops.gb"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;
         machine.gpu.screen = screen;

@@ -9,9 +9,11 @@ public class CPU {
     boolean zero, carry, half, subtract;
     boolean interrupts = true;
 
+    Debugger debugger;
+
     MMU mmu;
 
-    public CPU(Machine.MachineMode mode, MMU mmu){
+    public CPU(Machine.MachineMode mode, MMU mmu, Debugger debugger){
         this.mmu = mmu;
         a = mode.af_initial;
         zero = half = carry = true;
@@ -24,6 +26,7 @@ public class CPU {
         l = 0x4d;
         sp = 0xfffe;
         pc = 0x100; // Start with the opcode at 0x100, as this is what's loaded after the BIOS
+        this.debugger = debugger;
     }
 
     public void perform_op(Machine machine){
@@ -32,12 +35,14 @@ public class CPU {
             m_delta = 1;
         else{
             int opcode = mmu.read8(pc);
+            if(debugger != null)
+                debugger.debug(pc, this);
             pc ++;
             m_delta = opcode(machine, opcode);
             m += m_delta;
         }
         if(machine.interrupts_fired != 0) // Solely for  debugging
-            System.out.println(String.format("Enabled: %02x; Fired: %02x", machine.interrupts_enabled, machine.interrupts_fired));
+            ;//System.out.println(String.format("Enabled: %02x; Fired: %02x", machine.interrupts_enabled, machine.interrupts_fired));
         if(interrupts && machine.interrupts_fired != 0 && machine.interrupts_enabled != 0){
             int to_handle = machine.interrupts_enabled & machine.interrupts_fired;
             machine.halt = false;
@@ -65,6 +70,17 @@ public class CPU {
             else
                 interrupts = true;
         }
+    }
+
+    public void dump_registers(){
+        System.out.println(String.format("b: %02x;\tc: %02x;", b, c));
+        System.out.println(String.format("d: %02x;\te: %02x;", d, e));
+        System.out.println(String.format("h: %02x;\tl: %02x;", h, l));
+        System.out.println(String.format("a: %02x;", a));
+        System.out.println(String.format("Zero: %s;\tHalf-carry: %s;\tCarry: %s;\tSubtraction: %s;", zero, half, carry, subtract));
+        System.out.println(String.format("SP: %04x;", sp));
+        System.out.println(String.format("PC: %04x: %02x;", pc, mmu.read8(pc)));
+        System.out.println(String.format("Interrupts: %s;", interrupts));
     }
 
     private void int_rst(int address){
@@ -173,13 +189,13 @@ public class CPU {
                 pc += 2;
                 return 3;
             case 0x11: // LD DE,nn
-                d = mmu.read8(pc);
-                e = mmu.read8(pc + 1);
+                e = mmu.read8(pc);
+                d = mmu.read8(pc + 1);
                 pc += 2;
                 return 3;
             case 0x21: // LD HL,nn
-                h = mmu.read8(pc);
-                l = mmu.read8(pc + 1);
+                l = mmu.read8(pc);
+                h = mmu.read8(pc + 1);
                 pc += 2;
                 return 3;
             case 0x31: // LD SP,nn
@@ -985,7 +1001,7 @@ public class CPU {
                 /* Fall through */
             case 0xC9: // RET
                 pc = mmu.read16(sp);
-                sp -= 2;
+                sp += 2;
                 return 2;
             case 0xE9: // JP (HL)
                 pc = (h << 8) | l;
