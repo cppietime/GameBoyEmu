@@ -118,7 +118,7 @@ public class Machine {
     }
 
     public static void main(String[] args){
-        Machine machine = new Machine(new File("D:/Games/GBA/gbtest/cpu_instrs/individual/10-bit ops.gb"));
+        Machine machine = new Machine(new File("D:/Games/GBA/gbtest/cpu_instrs/individual/03-op sp,hl.gb"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;
         machine.gpu.screen = screen;

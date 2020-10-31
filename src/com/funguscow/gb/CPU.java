@@ -8,6 +8,7 @@ public class CPU {
     int pc, sp, pc_delta;
     boolean zero, carry, half, subtract;
     boolean interrupts = true;
+    boolean halt_bug = false;
 
     Debugger debugger;
 
@@ -36,39 +37,40 @@ public class CPU {
         else{
             int opcode = mmu.read8(pc);
             if(debugger != null)
-                debugger.debug(pc, this);
-            pc ++;
+                debugger.debug(pc, this, opcode);
+            if(!halt_bug)
+                pc ++;
+            halt_bug = false;
             m_delta = opcode(machine, opcode);
             m += m_delta;
         }
         if(machine.interrupts_fired != 0) // Solely for  debugging
             ;//System.out.println(String.format("Enabled: %02x; Fired: %02x", machine.interrupts_enabled, machine.interrupts_fired));
-        if(interrupts && machine.interrupts_fired != 0 && machine.interrupts_enabled != 0){
-            int to_handle = machine.interrupts_enabled & machine.interrupts_fired;
+//        if((machine.interrupts_fired & machine.interrupts_enabled) != 0)
+//            machine.halt = false;
+        int interrupt_handles = machine.interrupts_enabled & machine.interrupts_fired & 0x1f;
+        if(interrupt_handles != 0){
             machine.halt = false;
-            interrupts = false;
-            if((to_handle & 1) != 0){ // V-blank
-                machine.interrupts_fired &= ~1;
-                int_rst(0x40);
+            if(interrupts) {
+                interrupts = false;
+                if ((interrupt_handles & 1) != 0) { // V-blank
+                    machine.interrupts_fired &= ~1;
+                    int_rst(0x40);
+                } else if ((interrupt_handles & 2) != 0) { // LCDC interrupt
+                    machine.interrupts_fired &= ~2;
+                    int_rst(0x48);
+                } else if ((interrupt_handles & 4) != 0) { // Timer overflow
+                    machine.interrupts_fired &= ~4;
+                    int_rst(0x50);
+                } else if ((interrupt_handles & 8) != 0) { // Serial transfer
+                    machine.interrupts_fired &= ~8;
+                    int_rst(0x58);
+                } else if ((interrupt_handles & 16) != 0) { // P10-P13 Hi->Lo
+                    machine.interrupts_fired &= ~16;
+                    int_rst(0x60);
+                } else
+                    interrupts = true;
             }
-            else if((to_handle & 2) != 0){ // LCDC interrupt
-                machine.interrupts_fired &= ~2;
-                int_rst(0x48);
-            }
-            else if((to_handle & 4) != 0){ // Timer overflow
-                machine.interrupts_fired &= ~4;
-                int_rst(0x50);
-            }
-            else if((to_handle & 8) != 0){ // Serial transfer
-                machine.interrupts_fired &= ~8;
-                int_rst(0x58);
-            }
-            else if((to_handle & 16) != 0){ // P10-P13 Hi->Lo
-                machine.interrupts_fired &= ~16;
-                int_rst(0x60);
-            }
-            else
-                interrupts = true;
         }
     }
 
@@ -164,13 +166,13 @@ public class CPU {
             case 0xC0: // RET NZ
                 if (!zero) {
                     pc = mmu.read16(sp);
-                    sp -= 2;
+                    sp += 2;
                 }
                 return 2;
             case 0xD0: // RET NC
                 if (!carry) {
                     pc = mmu.read16(sp);
-                    sp -= 2;
+                    sp += 2;
                 }
                 return 2;
             case 0xE0: // LDH (FF00+n),A
@@ -629,11 +631,19 @@ public class CPU {
                 h = mmu.read8((h << 8) | l);
                 return 2;
             case 0x76: // HALT
-                machine.halt = true;
+                if(interrupts)
+                    machine.halt = true;
+                else{
+                    if((machine.interrupts_fired & machine.interrupts_enabled & 0x1f) != 0){
+                        halt_bug = true;
+                    }
+                    else
+                        machine.halt = true;
+                }
                 return 1;
             case 0x86: // ADD A,(HL)
             {
-                int hl = mmu.read8((h << 8) | c);
+                int hl = mmu.read8((h << 8) | l);
                 half = (a & 0xf) + (hl & 0xf) > 0xf;
                 subtract = false;
                 a += hl;
@@ -644,7 +654,7 @@ public class CPU {
             }
             case 0x96: // SUB A,(HL)
             {
-                int hl = mmu.read8((h << 8) | c);
+                int hl = mmu.read8((h << 8) | l);
                 subtract = true;
                 half = (hl & 0xf) > (a & 0xf);
                 a -= hl;
@@ -655,7 +665,7 @@ public class CPU {
             }
             case 0xA6: // AND A,(HL)
             {
-                int hl = mmu.read8((h << 8) | c);
+                int hl = mmu.read8((h << 8) | l);
                 subtract = carry = false;
                 half = true;
                 a &= hl;
@@ -664,7 +674,7 @@ public class CPU {
             }
             case 0xB6: // OR A,(HL)
             {
-                int hl = mmu.read8((h << 8) | c);
+                int hl = mmu.read8((h << 8) | l);
                 subtract = carry = half = false;
                 a |= hl;
                 zero = a == 0;
@@ -719,9 +729,9 @@ public class CPU {
                 a <<= 1;
                 carry = a > 0xff;
                 a &= 0xff;
-                a += carry ? 1 : 0;
+                a |= carry ? 1 : 0;
                 subtract = half = false;
-                zero = a == 0;
+                zero = false;
                 return 1;
             case 0x17: // RLA, treats carry as a buffer-9th bit, in contrast to RLCA above
                 a <<= 1;
@@ -729,13 +739,18 @@ public class CPU {
                 carry = a > 0xff;
                 a &= 0xff;
                 subtract = half = false;
-                zero = a == 0;
+                zero = false;
                 return 1;
             case 0x27: // DAA
-                if((a & 0xf) > 9 || half)
-                    a += 6;
-                if((a & 0xf0) > 0x90 || carry)
-                    a += 0x60;
+                int diff = 0;
+                if(((a & 0xf) > 9 && !subtract) || half)
+                    diff |= 0x6;
+                if((a > 0x99) && !subtract || carry) {
+                    diff |= 0x60;
+                    carry = true;
+                }
+                a += subtract ? -diff : diff;
+                a &= 0xff;
                 half = false;
                 zero = a == 0;
                 return 1;
@@ -844,7 +859,7 @@ public class CPU {
             {
                 int cf = carry ? 1 : 0;
                 subtract = true;
-                half = (a & 0xf) < ((b + cf) & 0xf);
+                half = (a & 0xf) < ((b & 0xf) + cf);
                 a -= b + cf;
                 carry = a < 0;
                 a &= 0xff;
@@ -882,8 +897,8 @@ public class CPU {
                 pc ++;
                 zero = subtract = false;
                 half = (sp & 0xf) + (n & 0xf) > 0xf;
+                carry = (sp & 0xff) + (n & 0xff) > 0xff;
                 sp += n;
-                carry = sp > 0xffff;
                 sp &= 0xffff;
                 return 4;
             }
@@ -893,8 +908,8 @@ public class CPU {
                 pc ++;
                 zero = subtract = false;
                 half  = (sp & 0xf) + (n & 0xf) > 0xf;
+                carry = (sp & 0xff) + (n & 0xff) > 0xff;
                 n += sp;
-                carry = n > 0xffff;
                 n &= 0xffff;
                 h = n >> 8;
                 l = n & 0xff;
@@ -976,7 +991,7 @@ public class CPU {
             {
                 int cf = carry ? 1 : 0;
                 subtract = true;
-                half = (a & 0xf) < ((c + cf) & 0xf);
+                half = (a & 0xf) < ((c & 0xf) + cf);
                 a -= c + cf;
                 carry = a < 0;
                 a &= 0xff;
@@ -1062,7 +1077,7 @@ public class CPU {
             {
                 int cf = carry ? 1 : 0;
                 subtract = true;
-                half = (a & 0xf) < ((d + cf) & 0xf);
+                half = (a & 0xf) < ((d & 0xf) + cf);
                 a -= d + cf;
                 carry = a < 0;
                 a &= 0xff;
@@ -1154,9 +1169,9 @@ public class CPU {
             {
                 int cf = carry ? 1 : 0;
                 subtract = true;
-                half = (a & 0xf) < ((e + cf) & 0xf);
-                a -= c + cf;
-                carry = e < 0;
+                half = (a & 0xf) < ((e & 0xf) + cf);
+                a -= e + cf;
+                carry = a < 0;
                 a &= 0xff;
                 zero = a == 0;
                 return 1;
@@ -1234,7 +1249,7 @@ public class CPU {
             {
                 int cf = carry ? 1 : 0;
                 subtract = true;
-                half = (a & 0xf) < ((h + cf) & 0xf);
+                half = (a & 0xf) < ((h & 0xf) + cf);
                 a -= h + cf;
                 carry = a < 0;
                 a &= 0xff;
@@ -1326,7 +1341,7 @@ public class CPU {
             {
                 int cf = carry ? 1 : 0;
                 subtract = true;
-                half = (a & 0xf) < ((l + cf) & 0xf);
+                half = (a & 0xf) < ((l & 0xf) + cf);
                 a -= l + cf;
                 carry = a < 0;
                 a &= 0xff;
@@ -1401,7 +1416,7 @@ public class CPU {
                 int hl = mmu.read8((h << 8) | l);
                 int cf = carry ? 1 : 0;
                 subtract = true;
-                half = (a & 0xf) < ((hl + cf) & 0xf);
+                half = (a & 0xf) < ((hl & 0xf) + cf);
                 a -= hl + cf;
                 carry = a < 0;
                 a &= 0xff;
@@ -1441,7 +1456,7 @@ public class CPU {
                 pc ++;
                 int cf = carry ? 1 : 0;
                 subtract = true;
-                half = (a & 0xf) < ((n + cf) & 0xf);
+                half = (a & 0xf) < ((n & 0xf) + cf);
                 a -= n + cf;
                 carry = a < 0;
                 a &= 0xff;
@@ -1471,10 +1486,10 @@ public class CPU {
                 half = subtract = false;
                 a >>= 1;
                 a |= carry ? 0x80 : 0;
-                zero = a == 0;
+                zero = false;
                 return 1;
             case 0x1F: // RRA
-                subtract = half = false;
+                subtract = half = zero = false;
                 if(carry)
                     a |= 0x100;
                 carry = (a & 1) == 1;
@@ -1486,6 +1501,7 @@ public class CPU {
                 return 1;
             case 0x3F: // CCF (or CPL CARRY)
                 carry = !carry;
+                subtract = half = false;
                 return 1;
             case 0x4F: // LD C,A
                 c = a;
@@ -1513,7 +1529,7 @@ public class CPU {
             {
                 int cf = carry ? 1 : 0;
                 subtract = true;
-                half = (a & 0xf) < ((a + cf) & 0xf);
+                half = (a & 0xf) < ((a & 0xf) + cf);
                 a = -cf;
                 carry = a < 0;
                 a &= 0xff;
@@ -1631,8 +1647,9 @@ public class CPU {
     }
 
     private int shl(int reg){
-        carry = reg >= 0x80;
+        carry = (reg & 0x80) != 0;
         reg <<= 1;
+        reg &= 0xff;
         subtract = half = false;
         zero = reg == 0;
         return reg;

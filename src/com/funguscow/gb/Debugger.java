@@ -8,17 +8,24 @@ public class Debugger {
 
     private Scanner scanner;
     private Set<Integer> breakpoints;
+    private Set<Integer> lookout;
     private boolean paused;
+    private int countdown;
 
     public Debugger(){
         this.scanner = new Scanner(System.in);
         breakpoints = new HashSet<>();
+        lookout = new HashSet<>();
         paused = true;
     }
 
-    public void debug(int pc, CPU cpu){
-        if(!paused && !breakpoints.contains(pc))
+    public void debug(int pc, CPU cpu, int opcode){
+        if(!paused && !breakpoints.contains(pc) && !lookout.contains(opcode))
             return;
+        if((breakpoints.contains(pc) || lookout.contains(opcode)) && countdown > 0) {
+            countdown--;
+            return;
+        }
         paused = true;
         cpu.dump_registers();
         input_loop:
@@ -53,6 +60,16 @@ public class Debugger {
                 }
                 case 'r': // Registers
                     cpu.dump_registers();
+                    break;
+                case 'n': // Countdown
+                    countdown = Integer.parseInt(line.substring(1), 16);
+                    break;
+                case 'l': // Lookout
+                    lookout.add(Integer.parseInt(line.substring(1), 16));
+                    break;
+                case 'e': // Erase
+                    lookout.remove(Integer.parseInt(line.substring(1), 16));
+                    break;
             }
         }
         System.out.println("Continuing...");

@@ -26,7 +26,7 @@ public class Timer {
                 div_accum = 0;
             }
             int threshold = 4 << ((tac & 3) << 1);
-            if(delta >= threshold){
+            if(delta >= threshold && (tac & 4) != 0){
                 delta -= threshold;
                 tima++;
                 if(tima > 0xff) {

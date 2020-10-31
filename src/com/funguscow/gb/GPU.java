@@ -95,23 +95,26 @@ public class GPU {
         if(!lcd_on)
             return;
         if(bg_on){
-            int tiledata_base = bg_tile_high ? 0x0800 : 0x0000;
+            int tiledata_base = bg_tile_high ? 0x1000 : 0x0000;
             {
                 int tilemap_base = bg_map_high ? 0x1c00 : 0x1800;
                 int ty = line + scroll_y;
                 int mty = ty >> 3;
+                mty &= 31;
                 ty &= 7;
                 int row_base = tiledata_base + ty * 2;
                 for (int tx = 0; tx < 20; tx++) {
-                    int mtx = (tx + scroll_x) >> 3;
+                    int mtx = ((tx << 3) + scroll_x) >> 3;
+                    mtx &= 31;
                     int tile_num = vram[tilemap_base + mty * 32 + mtx] & 0xff;
-                    if (bg_tile_high) tile_num -= 128;
+                    if (bg_tile_high) tile_num = (byte)tile_num;
                     int row0 = vram[tile_num * 16 + row_base];
                     int row1 = vram[tile_num * 16 + row_base + 1];
                     for (int x = 7; x >= 0; x--) {
                         int screen_x = x - (scroll_x & 7) + tx * 8;
-                        if (screen_x < 0)
-                            screen_x += 160; // Wrap around
+                        if (screen_x < 0) {
+                            break;
+                        }
                         int palid = ((row1 & 1) << 1) | (row0 & 1);
                         row1 >>= 1;
                         row0 >>= 1;
@@ -127,7 +130,7 @@ public class GPU {
                 if(window_line >= 0){
                     for(int tx = 0; tx < 20; tx ++){
                         int tile_num = vram[tilemap_base + window_line * 32 + tx] & 0xff;
-                        if(bg_tile_high) tile_num -= 128;
+                        if(bg_tile_high) tile_num = (byte)tile_num;
                         int row_base = tiledata_base + window_line * 2;
                         int row0 = vram[tile_num * 16 + row_base];
                         int row1 = vram[tile_num * 16 + row_base + 1];
@@ -250,7 +253,7 @@ public class GPU {
                                 if (lcd_on) lcdc |= 0x80;
                                 if (window_map_high) lcdc |= 0x40;
                                 if (window_on) lcdc |= 0x20;
-                                if (bg_tile_high) lcdc |= 0x10;
+                                if (!bg_tile_high) lcdc |= 0x10;
                                 if (bg_map_high) lcdc |= 0x8;
                                 if (tall_sprites) lcdc |= 0x4;
                                 if (sprites_on) lcdc |= 0x2;
@@ -332,23 +335,26 @@ public class GPU {
                                 lcd_on = (value & 0x80) != 0;
                                 window_map_high = (value & 0x40) != 0;
                                 window_on = (value & 0x20) != 0;
-                                bg_tile_high = (value & 0x10) != 0;
+                                bg_tile_high = (value & 0x10) == 0; /* Tiledata address is higher when this bit not set */
                                 bg_map_high = (value & 0x8) != 0;
                                 tall_sprites = (value & 0x4) != 0;
                                 sprites_on = (value & 0x2) != 0;
                                 bg_on = (value & 0x1) != 0;
                                 break;
-                            case 0x2: // STAT
+                            case 0x1: // STAT
                                 lyc_int = (value & 0x40) != 0;
                                 oam_int = (value & 0x20) != 0;
                                 vblank_int = (value & 0x10) != 0;
                                 hblank_int = (value & 0x8) != 0;
                                 break;
-                            case 0x3:
+                            case 0x2:
                                 scroll_y = value;
                                 break;
-                            case 0x4:
+                            case 0x3:
                                 scroll_x = value;
+                                break;
+                            case 0x4:
+                                line = value;
                                 break;
                             case 0x5:
                                 lyc = value;
