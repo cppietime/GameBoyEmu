@@ -12,24 +12,32 @@ public class Timer {
     private int tac;
     private int delta;
 
+    private static final int[] PERIOD = {
+            256, //4096 Hz
+            4, // 262144 Hz
+            16, // 65536 Hz
+            64, // 16384 Hz
+    };
+
     /**
      * Advance the timer by cycles m-cycles
      * @param machine Parent machine
      * @param cycles m-cycles to advance
      */
     public void incr(Machine machine, int cycles){
-        delta += cycles;
-        if(delta >= 4){
-            div_accum ++;
-            if(div_accum >= 16){
-                divider ++;
-                div_accum = 0;
-            }
-            int threshold = 4 << ((tac & 3) << 1);
-            if(delta >= threshold && (tac & 4) != 0){
+        div_accum += cycles;
+        if(div_accum >= 64){
+            divider ++;
+            divider &= 0xff;
+            div_accum -= 64;
+        }
+        if((tac & 4) != 0) {
+            delta += cycles;
+            int threshold = PERIOD[tac & 3];
+            if (delta >= threshold && (tac & 4) != 0) {
                 delta -= threshold;
                 tima++;
-                if(tima > 0xff) {
+                if (tima > 0xff) {
                     tima = tma;
                     machine.interrupts_fired |= 4;
                 }
@@ -60,6 +68,7 @@ public class Timer {
             case 2:
                 tma = value; break;
             case 3:
+                delta = 0;
                 tac = value; break;
         }
     }

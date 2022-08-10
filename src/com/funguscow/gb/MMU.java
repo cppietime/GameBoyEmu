@@ -47,7 +47,7 @@ public class MMU {
     private int hours;
     private int days;
     private boolean mbc3_halt_rtc;
-    private boolean left_bios = true;
+    public boolean left_bios = false;
 
     /**
      * Initialize according to power up seqeunce

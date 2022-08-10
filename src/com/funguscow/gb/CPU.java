@@ -1,5 +1,8 @@
 package com.funguscow.gb;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public class CPU {
 
     int m, m_delta;
@@ -42,8 +45,8 @@ public class CPU {
                 pc ++;
             halt_bug = false;
             m_delta = opcode(machine, opcode);
-            m += m_delta;
         }
+        m += m_delta;
         if(machine.interrupts_fired != 0) // Solely for  debugging
             ;//System.out.println(String.format("Enabled: %02x; Fired: %02x", machine.interrupts_enabled, machine.interrupts_fired));
 //        if((machine.interrupts_fired & machine.interrupts_enabled) != 0)
@@ -75,6 +78,7 @@ public class CPU {
     }
 
     public void dump_registers(){
+        System.out.println(String.format("Time: %d", m));
         System.out.println(String.format("b: %02x;\tc: %02x;", b, c));
         System.out.println(String.format("d: %02x;\te: %02x;", d, e));
         System.out.println(String.format("h: %02x;\tl: %02x;", h, l));
@@ -97,6 +101,9 @@ public class CPU {
         //System.exit(1);
     }
 
+    // For debugging only
+    Set<Integer> calledOps = new HashSet<>();
+
     /**
      * Executes a given opcode
      * @param machine The containing machine
@@ -104,12 +111,18 @@ public class CPU {
      * @return The number of m-cycles
      */
     public int opcode(Machine machine, int opcode){
+//        if (mmu.left_bios) {
+//            System.out.printf("%02x: %02x\n", pc - 1, opcode);
+//        }
+        calledOps.add(opcode);
         switch(opcode) {
             /* 0xX0 */
             case 0x00: // NOP
                 return 1;
             case 0x10: // STOP
-                machine.stop = true;
+                System.out.printf("Stopping at %04xf\n", pc++);
+//                machine.stop = true;
+                // Currently no way to unset stop
                 return 1;
             case 0x20: // JR NZ,n
                 if (zero) {
@@ -385,7 +398,7 @@ public class CPU {
             case 0x73: // LD (HL),E
                 mmu.write8((h << 8) | l, e);
                 return 2;
-            case 0x83: // ADD E,C
+            case 0x83: // ADD A,E
                 half = (a & 0xf) + (e & 0xf) > 0xf;
                 subtract = false;
                 a += e;
@@ -460,7 +473,7 @@ public class CPU {
             case 0x74: // LD (HL),H
                 mmu.write8((h << 8) | l, h);
                 return 2;
-            case 0x84: // ADD H,C
+            case 0x84: // ADD A,H
                 half = (a & 0xf) + (h & 0xf) > 0xf;
                 subtract = false;
                 a += h;
