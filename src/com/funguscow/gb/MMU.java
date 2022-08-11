@@ -375,6 +375,7 @@ public class MMU {
                 }
                 else if(address < 0xff80); // Unusable
                 else if(address == 0xffff){ // Interrupt enable register
+                    System.out.println("Interrupt enable: " + value);
                     machine.interrupts_enabled = value;
                 }
                 else{ // 0xff80 - 0xfffe, Zero Page Ram

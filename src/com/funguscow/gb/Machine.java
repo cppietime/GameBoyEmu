@@ -118,8 +118,8 @@ public class Machine {
     }
 
     public static void main(String[] args){
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\cpu_instrs\\individual\\07-jr,jp,call,ret,rst.gb"));
-        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb"));
+        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mem_timing\\individual\\02-write_timing.gb"));
+//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\interrupt_time\\interrupt_time.gb"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;
         machine.gpu.screen = screen;

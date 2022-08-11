@@ -26,7 +26,7 @@ public class Timer {
      */
     public void incr(Machine machine, int cycles){
         div_accum += cycles;
-        if(div_accum >= 64){
+        while(div_accum >= 64){
             divider ++;
             divider &= 0xff;
             div_accum -= 64;
