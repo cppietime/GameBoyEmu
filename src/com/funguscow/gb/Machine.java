@@ -12,9 +12,9 @@ import java.io.InputStream;
 public class Machine {
 
     public static enum MachineMode{
-        GAMEBOY(0),
-        GAMEBOY_POCKET(0),
-        GAMEBOY_COLOR(0);
+        GAMEBOY(1),
+        GAMEBOY_POCKET(1),
+        GAMEBOY_COLOR(1);
 
         public int af_initial;
 
@@ -105,7 +105,8 @@ public class Machine {
             e.printStackTrace();
             System.exit(3);
         }
-        cpu = new CPU(MachineMode.GAMEBOY, mmu, null);
+        Logger logger = new Logger("log.txt");
+        cpu = new CPU(MachineMode.GAMEBOY, mmu, null, logger);
     }
 
     /**
@@ -118,7 +119,7 @@ public class Machine {
     }
 
     public static void main(String[] args){
-        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mem_timing\\individual\\02-write_timing.gb"));
+        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mem_timing\\individual\\01-read_timing.gb"));
 //        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\interrupt_time\\interrupt_time.gb"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;

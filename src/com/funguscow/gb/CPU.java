@@ -14,10 +14,11 @@ public class CPU {
     boolean halt_bug = false;
 
     Debugger debugger;
+    Logger logger;
 
     MMU mmu;
 
-    public CPU(Machine.MachineMode mode, MMU mmu, Debugger debugger){
+    public CPU(Machine.MachineMode mode, MMU mmu, Debugger debugger, Logger logger){
         this.mmu = mmu;
         a = mode.af_initial;
         zero = half = carry = true;
@@ -31,6 +32,7 @@ public class CPU {
         sp = 0xfffe;
         pc = 0x100; // Start with the opcode at 0x100, as this is what's loaded after the BIOS
         this.debugger = debugger;
+        this.logger = logger;
     }
 
     public void perform_op(Machine machine){
@@ -39,6 +41,9 @@ public class CPU {
             m_delta = 1;
         else{
             int opcode = mmu.read8(pc);
+            if (logger != null) {
+                logger.log(this);
+            }
             if(debugger != null)
                 debugger.debug(pc, this, opcode);
             if(!halt_bug)
@@ -753,7 +758,11 @@ public class CPU {
         }
     }
 
-    private int get_register(int id){
+    private int get_flag_register() {
+        return (zero ? 0x80 : 0) | (subtract ? 0x40 : 0) | (half ? 0x20 : 0) | (carry ? 0x10 : 0);
+    }
+
+    public int get_register(int id){
         switch(id){
             case -2:
                 pc += 2;
@@ -771,6 +780,8 @@ public class CPU {
             case 9: return (d << 8) | e;
             case 10: return (h << 8) | l;
             case 11: return sp;
+            case 12: return get_flag_register();//F
+            case 13: return (a << 8) | get_flag_register();// AF
         }
         System.err.printf("ERROR: Invalid register numbered %d", id);
         System.exit(2);

@@ -5,7 +5,7 @@ package com.funguscow.gb;
  */
 public class Timer {
 
-    private int divider;
+    int divider;
     private int div_accum;
     private int tima;
     private int tma;
@@ -62,6 +62,7 @@ public class Timer {
     public void write(int address, int value){
         switch(address) { // ibid
             case 0:
+                div_accum = 0;
                 divider = 0; break;
             case 1:
                 tima = value; break;

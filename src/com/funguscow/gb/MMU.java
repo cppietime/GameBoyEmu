@@ -33,7 +33,7 @@ public class MMU {
     private byte[] internal_ram;
     private byte[] external_ram;
     private byte[] zero_page;
-    private int rom_bank;
+    int rom_bank;
     private int num_rom_banks;
     private int ram_bank;
     private int num_ram_banks;
@@ -70,9 +70,12 @@ public class MMU {
         internal_ram = new byte[0x2000];
         zero_page = new byte[128];
         // Startup sequence
-        write8(0xff0, 0);
+        write8(0xff00, 0xCF);
+        write8(0xff02, 0x7E);
+        machine.timer.divider = 0xAB;
         write8(0xff06, 0);
-        write8(0xff07, 0);
+        write8(0xff07, 0xF8);
+        write8(0xff0f, 0xE1);
         /* TODO write initial sound values */
         write8(0xff40, 0x91);
         write8(0xff42, 0);
@@ -125,8 +128,9 @@ public class MMU {
      * @return The byte at [address]
      */
     public int read8(int address){
-        if(!left_bios && address >= 0x100)
+        if(!left_bios && address >= 0x100) {
             left_bios = true;
+        }
         switch(address >> 13){
             case 0:
                 if(address < 0x100 && !left_bios)
