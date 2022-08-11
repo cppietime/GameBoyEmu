@@ -266,6 +266,33 @@ public class CPU {
             case 0xF0:
                 return ld_shadow(false);
 
+            // 16 bit immediates
+            case 0x01:
+                return ld16_imm(8);
+            case 0x11:
+                return ld16_imm(9);
+            case 0x21:
+                return ld16_imm(10);
+            case 0x31:
+                return ld16_imm(11);
+
+            // Push/pop
+            case 0xC1:
+                return pop16(8);
+            case 0xD1:
+                return pop16(9);
+            case 0xE1:
+                return pop16(10);
+            case 0xF1:
+                return pop16(13);
+            case 0xC5:
+                return push16(8);
+            case 0xD5:
+                return push16(9);
+            case 0xE5:
+                return push16(10);
+            case 0xF5:
+                return push16(13);
 
             /* 0xX0 */
             case 0x00: // NOP
@@ -276,95 +303,21 @@ public class CPU {
                 // Currently no way to unset stop
                 return 1;
             case 0x20: // JR NZ,n
-                if (zero) {
-                    pc++;
-                }
-                else {
-                    pc = pc + 1 + (byte) mmu.read8(pc);
-                }
-                return 2;
+                return jump_relative(!zero);
             case 0x30: // JR NC,n
-                if (carry)
-                    pc++;
-                else
-                    pc = pc + 1 + (byte) mmu.read8(pc);
-                return 2;
+                return jump_relative(!carry);
             case 0xC0: // RET NZ
-                if (!zero) {
-                    pc = mmu.read16(sp);
-                    sp += 2;
-                }
-                return 2;
+                return return_conditional(!zero);
             case 0xD0: // RET NC
-                if (!carry) {
-                    pc = mmu.read16(sp);
-                    sp += 2;
-                }
-                return 2;
-
-            /* 0xX1 */
-            case 0x01: // LD BC,nn
-                c = mmu.read8(pc);
-                b = mmu.read8(pc + 1);
-                pc += 2;
-                return 3;
-            case 0x11: // LD DE,nn
-                e = mmu.read8(pc);
-                d = mmu.read8(pc + 1);
-                pc += 2;
-                return 3;
-            case 0x21: // LD HL,nn
-                l = mmu.read8(pc);
-                h = mmu.read8(pc + 1);
-                pc += 2;
-                return 3;
-            case 0x31: // LD SP,nn
-                sp = mmu.read16(pc);
-                pc += 2;
-                return 3;
-            case 0xC1: // POP BC
-                c = mmu.read8(sp);
-                b = mmu.read8(sp + 1);
-                sp += 2;
-                return 3;
-            case 0xD1: // POP DE
-                e = mmu.read8(sp);
-                d = mmu.read8(sp + 1);
-                sp += 2;
-                return 3;
-            case 0xE1: // POP HL
-                l = mmu.read8(sp);
-                h = mmu.read8(sp + 1);
-                sp += 2;
-                return 3;
-            case 0xF1: // POP AF
-            {
-                int f = mmu.read8(sp);
-                a = mmu.read8(sp + 1);
-                sp += 2;
-                carry = (f & 0x10) != 0;
-                half = (f & 0x20) != 0;
-                subtract = (f & 0x40) != 0;
-                zero = (f & 0x80) != 0;
-                return 3;
-            }
+                return return_conditional(!carry);
 
             case 0xC2: // JP NZ
-                if (zero)
-                    pc += 2;
-                else
-                    pc = mmu.read16(pc);
-                return 3;
+                return jump_immediate(!zero);
             case 0xD2: // JP NC
-                if (carry)
-                    pc += 2;
-                else
-                    pc = mmu.read16(pc);
-                return 3;
-
+                return jump_immediate(!carry);
             case 0xC3: // JP nn
-                pc = mmu.read16(pc);
-                return 3;
+                return jump_immediate(true);
+
             //case 0xD3: REMOVED OPCODE OUT n,A
             //case 0xE3: REMOVED OPCODE EX (SP),HL
             case 0xF3: // DI
@@ -372,53 +325,11 @@ public class CPU {
                 return 1;
 
             case 0xC4: // CALL NZ,nn
-                if(zero)
-                    pc += 2;
-                else {
-                    sp -= 2;
-                    mmu.write16(sp, pc + 2);
-                    pc = mmu.read16(pc);
-                }
-                return 3;
+                return call(!zero);
             case 0xD4: // CALL NC,nn
-                if(carry)
-                    pc += 2;
-                else {
-                    sp -= 2;
-                    mmu.write16(sp, pc + 2);
-                    pc = mmu.read16(pc);
-                }
-                return 3;
+                return call(!carry);
             //case 0xE4: REMOVED OPCODE CALL P
             //case 0xF4: REMOVED OPCODE CALL S
-
-            case 0xC5: // PUSH BC
-                sp -= 2;
-                mmu.write16(sp, (b << 8) | c);
-                return 4;
-            case 0xD5: // PUSH DE
-                sp -= 2;
-                mmu.write16(sp, (d << 8) | e);
-                return 4;
-            case 0xE5: // PUSH HL
-                sp -= 2;
-                mmu.write16(sp, (h << 8) | l);
-                return 4;
-            case 0xF5: // PUSH AF
-            {
-                int af = a << 8;
-                if(zero)
-                    af |= 0x80;
-                if(subtract)
-                    af |= 0x40;
-                if(half)
-                    af |= 0x20;
-                if(carry)
-                    af |= 0x10;
-                sp -= 2;
-                mmu.write16(sp, af);
-                return 4;
-            }
 
             case 0x76: // HALT
                 if(interrupts)
@@ -460,7 +371,7 @@ public class CPU {
             }
 
             /* 0xX7 */
-            case 0x07: //RLCA
+            case 0x07: // RLCA
                 a <<= 1;
                 carry = a > 0xff;
                 a &= 0xff;
@@ -520,32 +431,15 @@ public class CPU {
                 pc += 2;
                 return 5;
             case 0x18: // JR n
-                pc += 1 + (byte)mmu.read8(pc);
-                return 2;
+                return jump_relative(true);
             case 0x28: // JR Z,n
-                if(zero)
-                    pc += 1 + (byte)mmu.read8(pc);
-                else
-                    pc ++;
-                return 2;
+                return jump_relative(zero);
             case 0x38: // JR c,n
-                if(carry)
-                    pc += 1 + (byte)mmu.read8(pc);
-                else
-                    pc ++;
-                return 2;
+                return jump_relative(carry);
             case 0xC8: // RET Z
-                if(zero){
-                    pc = mmu.read16(sp);
-                    sp += 2;
-                }
-                return 2;
+                return return_conditional(zero);
             case 0xD8: // RET C
-                if(carry){
-                    pc = mmu.read16(sp);
-                    sp += 2;
-                }
-                return 2;
+                return return_conditional(carry);
             case 0xE8: // ADD SP,n (byte)
             {
                 return add16_sp_imm();
@@ -570,26 +464,18 @@ public class CPU {
             case 0xC9: // RET
                 pc = mmu.read16(sp);
                 sp += 2;
-                return 2;
+                return 5;
             case 0xE9: // JP (HL)
                 pc = (h << 8) | l;
                 return 1;
             case 0xF9: // LD SP,HL
                 sp = (h << 8) | l;
-                return 1;
+                return 2;
 
             case 0xCA: // JZ nn
-                if(zero)
-                    pc = mmu.read16(pc);
-                else
-                    pc += 2;
-                return 3;
+                return jump_immediate(zero);
             case 0xDA: // JC nn
-                if(carry)
-                    pc = mmu.read16(pc);
-                else
-                    pc += 2;
-                return 3;
+                return jump_immediate(carry);
 
             case 0xCB: // CB extra instruction
                 return extra_cb(mmu.read8(pc++));
@@ -600,31 +486,15 @@ public class CPU {
                 return 1;
 
             case 0xCC: // CALL Z nn
-                if(zero) {
-                    sp -= 2;
-                    mmu.write16(sp, pc + 2);
-                    pc = mmu.read16(pc);
-                }
-                else
-                    pc += 2;
-                return 3;
+                return call(zero);
             case 0xDC: // CALL C nn
-                if(carry) {
-                    sp -= 2;
-                    mmu.write16(sp, pc + 2);
-                    pc = mmu.read16(pc);
-                }
-                else
-                    pc += 2;
-                return 3;
+                return call(carry);
             //case 0xEC REMOVED INSTRUCTION
             //case 0xFC REMOVED INSTRUCTION
 
             case 0xCD: // CALL nn
-                sp -= 2;
-                mmu.write16(sp, pc + 2);
-                pc = mmu.read16(pc);
-                return 3;
+                return call(true);
+
             //case 0xDD REMOVED IX INSTRUCTIONS
             //case 0xED REMOVED EXTD INSTRUCTIONS
             //case 0xFD REMOVED IY INSTRUCTIONS
@@ -755,7 +625,22 @@ public class CPU {
             case 11:
                 sp = value;
                 break;
+            case 12: // F
+                set_flag_register(value);
+                break;
+            case 13: // AF
+                a = value >> 8;
+                set_flag_register(value & 0xff);
+                break;
+
         }
+    }
+
+    private void set_flag_register(int value) {
+        zero = (value & 0x80) != 0;
+        subtract = (value & 0x40) != 0;
+        half = (value & 0x20) != 0;
+        carry = (value & 0x10) != 0;
     }
 
     private int get_flag_register() {
@@ -992,6 +877,44 @@ public class CPU {
         return 3;
     }
 
+    private int jump_relative(boolean condition) {
+        if (condition) {
+            pc = pc + 1 + (byte)mmu.read8(pc);
+            return 3;
+        }
+        pc++;
+        return 2;
+    }
+
+    private int jump_immediate(boolean condition) {
+        if (condition) {
+            pc = mmu.read16(pc);
+            return 4;
+        }
+        pc += 2;
+        return 3;
+    }
+
+    private int call(boolean condition) {
+        if (condition) {
+            sp -= 2;
+            mmu.write16(sp, pc + 2);
+            pc = mmu.read16(pc);
+            return 6;
+        }
+        pc += 2;
+        return 3;
+    }
+
+    private int return_conditional(boolean condition) {
+        if (condition) {
+            pc = mmu.read16(sp);
+            sp += 2;
+            return 5;
+        }
+        return 2;
+    }
+
     private int rlc(int reg){
         reg <<= 1;
         carry = reg > 0xff;
@@ -1081,6 +1004,7 @@ public class CPU {
     private int extra_cb(int opcode){
         int register = opcode & 0x7;
         int operation = opcode & 0xf8;
+        int long_cycles = 4;
         switch(operation){
             case 0x00: //RLC
                 set_register(register, rlc(get_register(register)));
@@ -1114,6 +1038,7 @@ public class CPU {
             case 0x68:
             case 0x70:
             case 0x78:
+                long_cycles = 3;
                 bit(get_register(register), (operation - 0x40) >> 3);
                 break;
             case 0x80:
@@ -1137,7 +1062,7 @@ public class CPU {
                 set_register(register, set(get_register(register), (operation - 0xC0) >> 3));
                 break;
         }
-        return (register == 6) ? 4 : 2;
+        return (register == 6) ? long_cycles : 2;
     }
 
 }

@@ -54,7 +54,7 @@ public class Timer {
             case 2:
                 return tma;
             case 3:
-                return tac;
+                return tac | 0xF8;
         }
         return 0;
     }

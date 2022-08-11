@@ -43,6 +43,11 @@ public class GPU {
         }
     }
 
+    public void init_state() {
+        mode = 1; // Is this even really right?
+        lyc_coincidence = true;
+    }
+
     /**
      * For now, just update the screen if there is one
      */
@@ -268,7 +273,7 @@ public class GPU {
                                 if (vblank_int) stat |= 0x10;
                                 if (hblank_int) stat |= 0x8;
                                 if (lyc_coincidence) stat |= 0x4;
-                                return stat;
+                                return stat | 0x80;
                             }
                             case 0x02: // 0xff41 SCY
                                 return scroll_y;

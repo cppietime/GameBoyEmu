@@ -78,8 +78,11 @@ public class MMU {
         write8(0xff0f, 0xE1);
         /* TODO write initial sound values */
         write8(0xff40, 0x91);
+        write8(0xff41, 0x85);
+        machine.gpu.init_state();
         write8(0xff42, 0);
         write8(0xff43, 0);
+        write8(0xff44, 0);
         write8(0xff45, 0);
         write8(0xff47, 0xfc);
         write8(0xff48, 0xff);

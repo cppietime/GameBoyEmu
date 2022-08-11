@@ -40,10 +40,10 @@ public class Logger implements AutoCloseable {
             String pcPart = cpu.pc < 0x4000 ? String.format("00:%04x", cpu.pc) :
                     cpu.pc < 0x8000 ? String.format("%02d:%04x", cpu.mmu.rom_bank, cpu.pc) :
                             String.format("%04x", cpu.pc);
-            String line = String.format("%sBC=%04x DE=%04x HL=%04x AF=%04x SP=%04x PC=%04x   $%x$%x$%x$%x$%x\r\n",
+            String line = String.format("%sBC=%04x DE=%04x HL=%04x AF=%04x SP=%04x PC=%04x   $%x$%x$%x$%x$%x$%x$%x\r\n",
                     pcPart, cpu.get_register(8), cpu.get_register(9), cpu.get_register(10), cpu.get_register(13),
-                    cpu.get_register(11), cpu.pc, cpu.mmu.read8(cpu.pc), cpu.mmu.read8(0xFF04), cpu.mmu.read8(0xFF05),
-                    cpu.mmu.read8(0xFF06), cpu.mmu.read8(0xFF07)).toUpperCase();
+                    cpu.get_register(11), cpu.pc, cpu.mmu.read8(cpu.pc), cpu.mmu.read8(cpu.pc + 1), cpu.mmu.read8(0xFF05),
+                    cpu.mmu.read8(0xFF06), cpu.mmu.read8(0xFF07), cpu.mmu.read8(0xFF41), cpu.mmu.read8(0xFF44)).toUpperCase();
             if (cpu.pc != lastPc) {
                 writer.write(line);
             }
