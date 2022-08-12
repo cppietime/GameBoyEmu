@@ -12,7 +12,7 @@ import java.awt.image.BufferedImage;
 
 public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
 
-    private BufferedImage image;
+    private final BufferedImage image;
     private BufferStrategy strategy;
     public Keypad keypad;
 
@@ -26,15 +26,14 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
         panel.setPreferredSize(new Dimension(160, 144));
         panel.setLayout(null);
         panel.add(this);
-        panel.setFocusable(false);
         setBounds(0, 0, 160, 144);
         setIgnoreRepaint(true);
         frame.pack();
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setVisible(true);
-        frame.addKeyListener(this);
-        frame.setFocusable(true);
-        frame.requestFocus();
+        setFocusable(true);
+        requestFocus();
+        addKeyListener(this);
         createBufferStrategy(2);
         strategy = getBufferStrategy();
     }

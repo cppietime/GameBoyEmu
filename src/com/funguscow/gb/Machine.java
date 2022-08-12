@@ -12,7 +12,7 @@ import java.util.List;
  */
 public class Machine {
 
-    public static enum MachineMode{
+    public enum MachineMode{
         GAMEBOY(1),
         GAMEBOY_POCKET(1),
         GAMEBOY_COLOR(1);
@@ -46,6 +46,7 @@ public class Machine {
     public Machine(File ROM){
         timer = new Timer(this);
         keypad = new Keypad();
+        keypad.machine = this;
         soundBoard = new SoundBoard(); // Not yet used
         gpu = new GPU(this);
         byte[] header = new byte[0x150];
@@ -62,6 +63,7 @@ public class Machine {
             if(header[0x149] != 0){
                 ram_size = 0x800 << (2 * header[0x149]);
             }
+            System.out.printf("Cartridge type = %02x\n", cartridge_type);
             switch(cartridge_type){
                 case 0:
                     ram_size = 0; break;
@@ -135,9 +137,12 @@ public class Machine {
     }
 
     public static void main(String[] args){
-        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb"));
+//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb"));
 //        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb"));
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\cpu_instrs\\individual\\02-interrupts.gb"));
+//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mem_timing\\mem_timing.gb"));
+//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\interrupt_time\\interrupt_time.gb"));
+        Machine machine = new Machine(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb"));
+//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mario_land.gb"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;
         machine.gpu.screen = screen;

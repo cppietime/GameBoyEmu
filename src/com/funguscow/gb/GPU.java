@@ -1,9 +1,15 @@
 package com.funguscow.gb;
 
+import java.util.Arrays;
+import java.util.Comparator;
+
 /**
  * Handle graphics
  */
 public class GPU {
+
+    public static final int INTER_BLANK_MS = (144 * (51 + 20 + 43)) * 1000 / (1 << 20);
+    public static final int WAIT_THRESHOLD = 4;
 
     public  interface GameboyScreen {
         void putPixel(int x, int y, int color);
@@ -11,6 +17,8 @@ public class GPU {
     }
 
     public static final int VRAM_SIZE = 0x2000;
+    public static final int SCREEN_HEIGHT = 144;
+    public static final int SCREEN_WIDTH = 160;
 
     private static class SpriteAttrib{
         public int x, y, pattern;
@@ -27,12 +35,16 @@ public class GPU {
     private boolean oam_int, vblank_int, hblank_int, lyc_int, lyc_coincidence;
     private int lyc;
     private int scroll_x, scroll_y, window_x, window_y;
-    private int[] bg_pal = new int[4], ob0_pal = new int[4], ob1_pal = new int[4];
+    private final int[] bg_pal = new int[4], ob0_pal = new int[4], ob1_pal = new int[4];
 
-    private SpriteAttrib[] attribs = new SpriteAttrib[40];
+    private final SpriteAttrib[] attribs = new SpriteAttrib[40];
+    private final Integer[] spriteOrder = new Integer[40];
+    private final boolean[] occluded = new boolean[SCREEN_WIDTH];
     byte[] vram = new byte[VRAM_SIZE];
 
-    private int[] z_buf = new int[144 * 160];
+    private final int[] z_buf = new int[SCREEN_WIDTH * SCREEN_HEIGHT];
+
+    private long lastVBlank;
 
     public GameboyScreen screen = null;
 
@@ -40,7 +52,9 @@ public class GPU {
         this.machine = machine;
         for(int i = 0; i < 40; i++){
             attribs[i] = new SpriteAttrib();
+            spriteOrder[i] = i;
         }
+        lastVBlank = System.currentTimeMillis();
     }
 
     public void init_state() {
@@ -51,42 +65,8 @@ public class GPU {
     /**
      * For now, just update the screen if there is one
      */
-    private void sync_time(){
-        /* TODO does not yet implement flips for sprites, even in theory... */
+    private void do_draw(){
         if(screen != null) {
-            if(sprites_on){
-                for(int i = 0; i < 40; i++){
-                    SpriteAttrib attrib = attribs[i];
-                    if(attrib.x <= 0 || attrib.y <= 0 || attrib.x >= 168 || attrib.y >= 152)
-                        continue;
-                    int pattern = attrib.pattern;
-                    if(tall_sprites)
-                        pattern &= ~1;
-                    int pattern_base = pattern * 16;
-                    int height = tall_sprites ? 16 : 8;
-                    for(int y = 0; y < height; y++){
-                        int screen_y = y - 16 + attrib.y;
-                        if(screen_y < 0 || screen_y >= 144)
-                            continue;
-                        int row0 = vram[pattern_base];
-                        int row1 = vram[pattern_base + 1];
-                        for(int x = 7; x >= 0; x--){
-                            int screen_x = x - 8 + attrib.x;
-                            if(screen_x < 0 || screen_x >= 160)
-                                continue;
-                            if(attrib.priority && z_buf[screen_y * 160 + screen_x] != 0)
-                                continue; // Occluded
-                            int palid = (row0 & 1) | ((row1 & 1) << 1);
-                            int color = (attrib.use_pal1 ? ob1_pal : ob0_pal)[palid];
-                            if(color == 0)
-                                continue; // Transparent
-                            color *= 85;
-                            color = (color << 16) | (color << 8) | color;
-                            screen.putPixel(screen_x, screen_y, color);
-                        }
-                    }
-                }
-            }
             screen.update();
         }
     }
@@ -99,8 +79,13 @@ public class GPU {
             return;
         if(!lcd_on)
             return;
+        if (line >= SCREEN_HEIGHT) {
+            return;
+        }
+        Arrays.fill(z_buf, 0);
         if(bg_on){
             int tiledata_base = bg_tile_high ? 0x1000 : 0x0000;
+            // Draw Background
             {
                 int tilemap_base = bg_map_high ? 0x1c00 : 0x1800;
                 int ty = line + scroll_y;
@@ -124,19 +109,27 @@ public class GPU {
                         row1 >>= 1;
                         row0 >>= 1;
                         int shade = bg_pal[palid] * 85; // Transform [0,3] to [0,255]
+                        shade = 255 - shade;
                         screen.putPixel(screen_x, line, (shade << 16) | (shade << 8) | shade);
                         z_buf[line * 160 + screen_x] = palid;
                     }
                 }
             }
+            // Draw window
             if(window_on && window_x >= 0 && window_y >= 0 && window_x <= 166 && window_y <= 143){
                 int tilemap_base = window_map_high ? 0x1c00 : 0x1800;
-                int window_line = line - window_y;
-                if(window_line >= 0){
+                int wline = window_line - window_y;
+                int mty = wline >> 3;
+                int ty = wline & 7;
+                if(wline >= 0){
                     for(int tx = 0; tx < 20; tx ++){
-                        int tile_num = vram[tilemap_base + window_line * 32 + tx] & 0xff;
+                        int index = tilemap_base + mty * 32 + tx;
+                        if (index >= VRAM_SIZE) {
+                            continue;
+                        }
+                        int tile_num = vram[index] & 0xff;
                         if(bg_tile_high) tile_num = (byte)tile_num;
-                        int row_base = tiledata_base + window_line * 2;
+                        int row_base = tiledata_base + ty * 2;
                         int row0 = vram[tile_num * 16 + row_base];
                         int row1 = vram[tile_num * 16 + row_base + 1];
                         for(int x = 7; x >= 0; x--){
@@ -147,9 +140,62 @@ public class GPU {
                             row1 >>= 1;
                             row0 >>= 1;
                             int shade = bg_pal[palid] * 85; // Transform [0,3] to [0,255]
+                            shade = 255 - shade;
                             screen.putPixel(screen_x, line, (shade << 16) | (shade << 8) | shade);
-                            z_buf[line * 160 + screen_x] = palid;
+                            z_buf[line * 160 + screen_x] |= palid;
                         }
+                    }
+                }
+            }
+        }
+        // Draw sprites (something still isn't right here)
+        if (sprites_on) {
+            Arrays.fill(occluded, false);
+            int height = tall_sprites ? 16 : 8;
+            Arrays.sort(spriteOrder, Comparator.comparingInt(a -> attribs[a].x));
+            int spritesThisLine = 0;
+            for (int i = 0; i < spriteOrder.length && spritesThisLine < 10; i++) {
+                SpriteAttrib sprite = attribs[spriteOrder[i]];
+                int y0 = sprite.y - 16;
+                if (y0 > line || y0 + height <= line) {
+                    continue;
+                }
+                spritesThisLine++;
+                int x0 = sprite.x - 8;
+                if (x0 + 8 <= 0 || x0 >= SCREEN_WIDTH) {
+                    continue;
+                }
+                int pattern = sprite.pattern;
+                if (tall_sprites) {
+                    pattern &= ~1;
+                }
+                int pattern_base = pattern << 4;
+                int spriteY = line - y0;
+                if (sprite.y_flip) {
+                    spriteY = height - 1 - spriteY;
+                }
+                int row0 = vram[pattern_base + 2 * spriteY];
+                int row1 = vram[pattern_base + 2 * spriteY + 1];
+                for (int x = 0; x < 8; x++) {
+                    int screenX = x0 + x;
+                    if (sprite.x_flip) {
+                        screenX = x0 + 7 - x;
+                    }
+                    if (screenX < 0 || screenX >= SCREEN_WIDTH) {
+                        continue;
+                    }
+                    if (occluded[screenX]) {
+                        continue;
+                    }
+                    int pixel = ((row0 >> (7 - x)) & 1) | (((row1 >> (7 - x)) & 1) << 1);
+                    int color = (sprite.use_pal1 ? ob1_pal : ob0_pal)[pixel] * 85;
+                    boolean draw = !sprite.priority;
+                    draw |= z_buf[line * 160 + screenX] == 0;
+                    draw &= (color != 0);
+                    if (draw) {
+                        color = 255 - color;
+                        screen.putPixel(screenX, line, (color << 16) | (color << 8) | color);
+                        occluded[screenX] = true;
                     }
                 }
             }
@@ -166,7 +212,7 @@ public class GPU {
             case 0: // Hblank
                 if(mode_cycles  >= 51){
                     mode_cycles -= 51;
-                    line++;
+                    increment_line();
                     if(line == lyc) {
                         lyc_coincidence = true;
                         if(lyc_int)
@@ -180,24 +226,34 @@ public class GPU {
                         mode = 2;
                     }
                     else {
-                        sync_time();
+                        do_draw();
                         machine.interrupts_fired |= 1; // Vblank interrupt
                         if(vblank_int)
                             machine.interrupts_fired |= 0x2;
                         mode = 1;
+                        long passed = System.currentTimeMillis() - lastVBlank;
+                        long targetWait = INTER_BLANK_MS - passed;
+                        if (targetWait > WAIT_THRESHOLD) {
+                            try {
+                                Thread.sleep(targetWait);
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        }
                     }
                 }
                 break;
             case 1: // Vblank
                 if(mode_cycles >= 114){
                     mode_cycles -= 114;
-                    line++;
+                    increment_line();
                     if(line >= 154) {
                         if(oam_int)
                             machine.interrupts_fired |= 0x2;
                         mode = 2;
                         line = 0;
                         window_line = 0;
+                        lastVBlank = System.currentTimeMillis();
                     }
                 }
                 break;
@@ -216,6 +272,13 @@ public class GPU {
                         machine.interrupts_fired |= 0x2;
                 }
                 break;
+        }
+    }
+
+    private void increment_line() {
+        line++;
+        if (window_x >= 0 && window_y >= 0 && window_x <= 166 && window_y <= 143) {
+            window_line++;
         }
     }
 

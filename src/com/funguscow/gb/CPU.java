@@ -7,8 +7,8 @@ public class CPU {
 
     int m, m_delta;
 
-    int a, b, c, d, e, f, h, l;
-    int pc, sp, pc_delta;
+    int a, b, c, d, e, h, l;
+    int pc, sp;
     boolean zero, carry, half, subtract;
     boolean interrupts = false;
     boolean halt_bug = false;
@@ -30,7 +30,7 @@ public class CPU {
         h = 0x01;
         l = 0x4d;
         sp = 0xfffe;
-        pc = 0x00; // Start with the opcode at 0x100, as this is what's loaded after the BIOS
+        pc = 0x100; // Start with the opcode at 0x100, as this is what's loaded after the BIOS
         this.debugger = debugger;
         this.logger = logger;
     }
@@ -53,10 +53,6 @@ public class CPU {
             m_delta = opcode(machine, opcode);
         }
         m += m_delta;
-        if(machine.interrupts_fired != 0) // Solely for  debugging
-            ;//System.out.println(String.format("Enabled: %02x; Fired: %02x", machine.interrupts_enabled, machine.interrupts_fired));
-//        if((machine.interrupts_fired & machine.interrupts_enabled) != 0)
-//            machine.halt = false;
         int interrupt_handles = machine.interrupts_enabled & machine.interrupts_fired & 0x1f;
         if(interrupt_handles != 0){
             machine.halt = false;
@@ -85,19 +81,19 @@ public class CPU {
     }
 
     public void dump_registers(){
-        System.out.println(String.format("Time: %d", m));
-        System.out.println(String.format("b: %02x;\tc: %02x;", b, c));
-        System.out.println(String.format("d: %02x;\te: %02x;", d, e));
-        System.out.println(String.format("h: %02x;\tl: %02x;", h, l));
-        System.out.println(String.format("a: %02x;", a));
-        System.out.println(String.format("Zero: %s;\tHalf-carry: %s;\tCarry: %s;\tSubtraction: %s;", zero, half, carry, subtract));
-        System.out.println(String.format("SP: %04x;", sp));
-        System.out.println(String.format("PC: %04x: %02x;", pc, mmu.read8(pc)));
-        System.out.println(String.format("Interrupts: %s;", interrupts));
+        System.out.printf("Time: %d\n", m);
+        System.out.printf("b: %02x;\tc: %02x;\n", b, c);
+        System.out.printf("d: %02x;\te: %02x;\n", d, e);
+        System.out.printf("h: %02x;\tl: %02x;\n", h, l);
+        System.out.printf("a: %02x;\n", a);
+        System.out.printf("Zero: %s;\tHalf-carry: %s;\tCarry: %s;\tSubtraction: %s;\n", zero, half, carry, subtract);
+        System.out.printf("SP: %04x;\n", sp);
+        System.out.printf("PC: %04x: %02x;\n", pc, mmu.read8(pc));
+        System.out.printf("Interrupts: %s;\n", interrupts);
     }
 
     private void int_rst(int address){
-        System.out.println("Handling interrupt at " + address);
+//        System.out.println("Handling interrupt at " + address);
         sp -= 2;
         mmu.write16(sp, pc);
         pc = address;
@@ -647,13 +643,11 @@ public class CPU {
         int src = get_register(r_src);
         int carry_bit = (cyclic && carry) ? 1 : 0;
         int sum = dst - src - carry_bit;
-//        System.out.printf("%02x - %02x - %01x = ", dst, src, carry_bit);
         subtract = true;
         half = (dst & 0xf) < ((src & 0xf) + carry_bit);
         carry = sum < 0;
         sum &= 0xff;
         zero = sum == 0;
-//        System.out.printf("%02x (%s, %s, %s, %s)\n", sum, zero, subtract, half, carry);
         if (save) {
             set_register(r_dst, sum);
         }

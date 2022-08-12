@@ -1,6 +1,5 @@
 package com.funguscow.gb;
 
-import javax.imageio.IIOException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.stream.Collectors;
@@ -10,23 +9,6 @@ import java.util.stream.Collectors;
  */
 public class MMU {
 
-//    private static final int[] BIOS = {
-//            0x31, 0xFE, 0xFF, 0xAF, 0x21, 0xFF, 0x9F, 0x32, 0xCB, 0x7C, 0x20, 0xFB, 0x21, 0x26, 0xFF, 0x0E,
-//            0x11, 0x3E, 0x80, 0x32, 0xE2, 0x0C, 0x3E, 0xF3, 0xE2, 0x32, 0x3E, 0x77, 0x77, 0x3E, 0xFC, 0xE0,
-//            0x47, 0x11, 0x04, 0x01, 0x21, 0x10, 0x80, 0x1A, 0xCD, 0x95, 0x00, 0xCD, 0x96, 0x00, 0x13, 0x7B,
-//            0xFE, 0x34, 0x20, 0xF3, 0x11, 0xD8, 0x00, 0x06, 0x08, 0x1A, 0x13, 0x22, 0x23, 0x05, 0x20, 0xF9,
-//            0x3E, 0x19, 0xEA, 0x10, 0x99, 0x21, 0x2F, 0x99, 0x0E, 0x0C, 0x3D, 0x28, 0x08, 0x32, 0x0D, 0x20,
-//            0xF9, 0x2E, 0x0F, 0x18, 0xF3, 0x67, 0x3E, 0x64, 0x57, 0xE0, 0x42, 0x3E, 0x91, 0xE0, 0x40, 0x04,
-//            0x1E, 0x02, 0x0E, 0x0C, 0xF0, 0x44, 0xFE, 0x90, 0x20, 0xFA, 0x0D, 0x20, 0xF7, 0x1D, 0x20, 0xF2,
-//            0x0E, 0x13, 0x24, 0x7C, 0x1E, 0x83, 0xFE, 0x62, 0x28, 0x06, 0x1E, 0xC1, 0xFE, 0x64, 0x20, 0x06,
-//            0x7B, 0xE2, 0x0C, 0x3E, 0x87, 0xF2, 0xF0, 0x42, 0x90, 0xE0, 0x42, 0x15, 0x20, 0xD2, 0x05, 0x20,
-//            0x4F, 0x16, 0x20, 0x18, 0xCB, 0x4F, 0x06, 0x04, 0xC5, 0xCB, 0x11, 0x17, 0xC1, 0xCB, 0x11, 0x17,
-//            0x05, 0x20, 0xF5, 0x22, 0x23, 0x22, 0x23, 0xC9, 0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B,
-//            0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D, 0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E,
-//            0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99, 0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC,
-//            0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E, 0x3c, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x4C,
-//            0x21, 0x04, 0x01, 0x11, 0xA8, 0x00, 0x1A, 0x13, 0xBE, 0x20, 0xFE, 0x23, 0x7D, 0xFE, 0x34, 0x20,
-//            0xF5, 0x06, 0x19, 0x78, 0x86, 0x23, 0x05, 0x20, 0xFB, 0x86, 0x20, 0xFE, 0x3E, 0x01, 0xE0, 0x50};
     private static final int[] BIOS = {
         0x31, 0xfe, 0xff, 0xaf, 0x21, 0xff, 0x9f, 0x32, 0xcb, 0x7c, 0x20, 0xfb, 0x21, 0x26, 0xff, 0x0e,
         0x11, 0x3e, 0x80, 0x32, 0xe2, 0x0c, 0x3e, 0xf3, 0xe2, 0x32, 0x3e, 0x77, 0x77, 0x3e, 0xfc, 0xe0,
@@ -76,6 +58,7 @@ public class MMU {
      * @param ram_size Size in bytes of RAM
      */
     public MMU(Machine machine, int mbc_type, int num_rom_banks, int num_ram_banks, int ram_size){
+        System.out.printf("Initialize MMU with MBC: %x, %d ROM and %d RAM\n", mbc_type, num_rom_banks, num_ram_banks);
         this.machine = machine;
         this.mbc_type = mbc_type;
         this.num_rom_banks = num_rom_banks;
@@ -127,7 +110,7 @@ public class MMU {
      * @param ROM InputStream of ROM
      * @param offset Where to load to
      * @param len How many bytes
-     * @throws IOException
+     * @throws IOException From inner read
      */
     public void load_ROM(InputStream ROM, int offset, int len) throws IOException {
         ROM.read(rom, offset, len);
@@ -172,14 +155,16 @@ public class MMU {
                             if(ram_addr < ram_size)
                                 return external_ram[ram_addr] & 0xff;
                         }
-                        return 0;
+                        return 0xff;
                     case 2: // Write low 4 bits of "RAM"
                         if(ram_enabled && address < 0xa200){
                             return external_ram[address & 0x1ff] & 0xf;
                         }
-                        return 0;
+                        return 0xff;
                     case 3: // Either write RAM or set a register
                         switch(mbc3_rtc_register){
+                            case 0:
+                                return external_ram[(ram_bank << 13) + (address & 0x1fff)] & 0xff;
                             case 8:
                                 return seconds;
                             case 9:
@@ -191,9 +176,9 @@ public class MMU {
                             case 12:
                                 return (days >> 8) | (mbc3_halt_rtc ? 0x40 : 0);
                         }
-                        return 0;
+                        return 0xff;
                 }
-                return 0;
+                return 0xff;
             case 6: //0xc000 - 0xdfff
             case 7: //0xe000 - 0xffff
                 if(address < 0xfe00)
@@ -217,7 +202,7 @@ public class MMU {
                                 return machine.interrupts_fired;
                         }
                     }
-                    return 0;
+                    return 0xff;
                 }
                 else if(address < 0xff80) return 0xff; // Unusable
                 else if(address != 0xffff) // Zero-page
@@ -242,10 +227,10 @@ public class MMU {
      * @param value Value to write
      */
     public void write8(int address, int value){
-        if (address == 0xff01) {
-            char c = (value == ' ') ? '\n' : (char)value;
-            System.out.print(c);
-        }
+//        if (address == 0xff01) {
+//            char c = (value == ' ') ? '\n' : (char)value;
+//            System.out.print(c);
+//        }
         switch(address >> 13){
             case 0: //0x0000-0x1fff
                 switch(mbc_type){
@@ -316,6 +301,7 @@ public class MMU {
                         ram_bank = value & 0x3;
                         break;
                 }
+                rom_bank %= num_rom_banks;
                 ram_bank %= Math.max(1, num_ram_banks);
                 break;
             case 3: //0x6000 - 0x7fff
@@ -359,6 +345,8 @@ public class MMU {
                         break;
                     case 3: // Either write RAM or set a register
                         switch(mbc3_rtc_register){
+                            case 0:
+                                external_ram[(ram_bank << 13) + (address & 0x1fff)] = (byte)(value & 0xff); break;
                             case 8:
                                 seconds = value % 60; break;
                             case 9:
@@ -398,7 +386,7 @@ public class MMU {
                             case 0x0f: // 0xff0f - IF
                                 machine.interrupts_fired = value; break;
                             case 0x46: // 0xff46 - DMA
-                                DMA(value); break;
+                                DMA(value << 8); break;
                         }
                     }
                 }
@@ -406,11 +394,11 @@ public class MMU {
                     if (value != 0) {
                         left_bios = true;
                         System.out.println(machine.cpu.calledOps.stream().sorted().map(Integer::toHexString).collect(Collectors.joining(", ")));
+                        System.out.println("Line on leave bios is " + machine.gpu.line);
                     }
                 }
                 else if(address < 0xff80); // Unusable
                 else if(address == 0xffff){ // Interrupt enable register
-                    System.out.println("Interrupt enable: " + value);
                     machine.interrupts_enabled = value;
                 }
                 else{ // 0xff80 - 0xfffe, Zero Page Ram

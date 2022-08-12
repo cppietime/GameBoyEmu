@@ -5,7 +5,7 @@ import java.util.*;
 
 public class OpcodeTest {
 
-    private static final int parseHex(Scanner scanner) {
+    private static int parseHex(Scanner scanner) {
         String hexStr = scanner.next().split("0x")[1];
         return Integer.parseInt(hexStr, 16);
     }

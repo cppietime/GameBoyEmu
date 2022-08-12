@@ -11,7 +11,7 @@ public class Keypad {
                             KEY_SELECT = 6,
                             KEY_START = 7;
 
-    int keys_up = 0;
+    int keys_up = 0xff;
     boolean p14, p15;
     Machine machine;
 
