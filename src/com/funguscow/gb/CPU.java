@@ -35,22 +35,20 @@ public class CPU {
         this.logger = logger;
     }
 
-    public void perform_op(Machine machine){
+    public int perform_op(Machine machine){
         pc &= 0xffff;
-        if(machine.halt)
+        if(machine.halt || machine.stop)
             m_delta = 1;
-        else{
+        else {
             if (pc >= 0x100 && !mmu.left_bios) {
                 mmu.left_bios = true;
             }
-            int opcode = mmu.read8(pc);
+            int opcode = next8();
             if (logger != null) {
                 logger.log(this);
             }
             if(debugger != null)
                 debugger.debug(pc, this, opcode);
-            if(!halt_bug)
-                pc ++;
             halt_bug = false;
             m_delta = opcode(machine, opcode);
         }
@@ -83,6 +81,7 @@ public class CPU {
                     interrupts = true;
             }
         }
+        return m_delta;
     }
 
     public void dump_registers(){
@@ -335,6 +334,7 @@ public class CPU {
             //case 0xF4: REMOVED OPCODE CALL S
 
             case 0x76: // HALT
+                // Not sure how the HALT bug is supposed to work here
                 if(interrupts)
                     machine.halt = true;
                 else{
@@ -416,8 +416,7 @@ public class CPU {
             }
             case 0xF8: // LDHL SP,n (byte)
             {
-                int n = (byte)mmu.read8(pc);
-                pc ++;
+                int n = (byte)next8();
                 zero = subtract = false;
                 half  = (sp & 0xf) + (n & 0xf) > 0xf;
                 carry = (sp & 0xff) + (n & 0xff) > 0xff;
@@ -435,20 +434,20 @@ public class CPU {
                 pc = mmu.read16(sp);
                 sp += 2;
                 return 4;
-            case 0xE9: // JP (HL)
+            case 0xE9: // JP HL
                 pc = (h << 8) | l;
                 return 1;
             case 0xF9: // LD SP,HL
                 sp = (h << 8) | l;
                 return 2;
 
-            case 0xCA: // JZ nn
+            case 0xCA: // JP Z nn
                 return jump_immediate(zero);
-            case 0xDA: // JC nn
+            case 0xDA: // JP C nn
                 return jump_immediate(carry);
 
             case 0xCB: // CB extra instruction
-                return extra_cb(mmu.read8(pc++));
+                return extra_cb(next8());
             //case 0xDB: REMOVED INSTRUCTION IN A,n
             //case 0xEB: REMOVED INSTRUCTION EX DE,HL
             case 0xFB: // EI
@@ -516,6 +515,21 @@ public class CPU {
         return 1;
     }
 
+    private int next8() {
+        int b = mmu.read8(pc);
+        if (!halt_bug) {
+            pc += 1;
+        }
+        halt_bug = false;
+        return b;
+    }
+
+    private int next16() {
+        int lsb = next8();
+        int msb = next8();
+        return (msb << 8) | lsb;
+    }
+
     private void set_register(int id, int value){
         switch(id){
             case 0:
@@ -556,27 +570,26 @@ public class CPU {
                 a = value >> 8;
                 set_flag_register(value & 0xff);
                 break;
-
+            default:
+                throw new IllegalArgumentException(String.format("%d is an invalid register number", id));
         }
     }
 
-    private void set_flag_register(int value) {
+    public void set_flag_register(int value) {
         zero = (value & 0x80) != 0;
         subtract = (value & 0x40) != 0;
         half = (value & 0x20) != 0;
         carry = (value & 0x10) != 0;
     }
 
-    private int get_flag_register() {
+    public int get_flag_register() {
         return (zero ? 0x80 : 0) | (subtract ? 0x40 : 0) | (half ? 0x20 : 0) | (carry ? 0x10 : 0);
     }
 
     public int get_register(int id){
         switch(id){
-            case -2:
-                pc += 2;
-                return mmu.read16(pc - 2); // Immediate 2 bytes
-            case -1: return mmu.read8(pc++); // Immediate 1 byte
+            case -2: return next16(); // Immediate 2 bytes
+            case -1: return next8(); // Immediate 1 byte
             case 0: return b;
             case 1: return c;
             case 2: return d;
@@ -592,9 +605,7 @@ public class CPU {
             case 12: return get_flag_register();//F
             case 13: return (a << 8) | get_flag_register();// AF
         }
-        System.err.printf("ERROR: Invalid register numbered %d", id);
-        System.exit(2);
-        return 0;
+        throw new IllegalArgumentException(String.format("%d is an invalid register number", id));
     }
 
     private int add8_r_rn(int r_dst, int r_src, boolean cyclic) {
@@ -624,7 +635,7 @@ public class CPU {
 
     private int add16_sp_imm() {
         zero = subtract = false;
-        int imm = (int)((byte)mmu.read8(pc++));
+        int imm = ((byte)next8());
         half = (sp & 0xf) + (imm & 0xf) > 0xf;
         carry = (sp & 0xff) + (imm & 0xff) > 0xff;
         sp = (imm + sp) & 0xffff;
@@ -696,7 +707,7 @@ public class CPU {
     }
 
     private int ld8_imm(int r) {
-        int imm = mmu.read8(pc++);
+        int imm = next8();
         set_register(r, imm);
         return r == 6 ? 3 : 2;
     }
@@ -746,7 +757,7 @@ public class CPU {
     }
 
     private int ld_shadow(boolean store) {
-        int addr = mmu.read8(pc++) + 0xff00;
+        int addr = next8() + 0xff00;
         if (store) {
             int src = get_register(7);
             mmu.write8(addr, src);
@@ -759,15 +770,13 @@ public class CPU {
     }
 
     private int ld16_imm(int r) {
-        int src = mmu.read16(pc);
-        pc += 2;
+        int src = next16();
         set_register(r, src);
         return 3;
     }
 
     private int store_sp() {
-        int addr = mmu.read16(pc);
-        pc += 2;
+        int addr = next16();
         mmu.write16(addr, sp);
         return 5;
     }
@@ -787,31 +796,31 @@ public class CPU {
     }
 
     private int jump_relative(boolean condition) {
+        byte offset = (byte)next8();
         if (condition) {
-            pc = pc + 1 + (byte)mmu.read8(pc);
+            pc += offset;
             return 3;
         }
-        pc++;
         return 2;
     }
 
     private int jump_immediate(boolean condition) {
+        int target = next16();
         if (condition) {
-            pc = mmu.read16(pc);
+            pc = target;
             return 4;
         }
-        pc += 2;
         return 3;
     }
 
     private int call(boolean condition) {
+        int target = next16();
         if (condition) {
             sp -= 2;
-            mmu.write16(sp, pc + 2);
-            pc = mmu.read16(pc);
+            mmu.write16(sp, pc);
+            pc = target;
             return 6;
         }
-        pc += 2;
         return 3;
     }
 

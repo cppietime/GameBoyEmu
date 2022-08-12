@@ -47,10 +47,10 @@ public class MMU {
 
     Machine machine;
     private int ram_size;
-    private byte[] rom;
-    private byte[] internal_ram;
-    private byte[] external_ram;
-    private byte[] zero_page;
+    byte[] rom;
+    byte[] internal_ram;
+    byte[] external_ram;
+    byte[] zero_page;
     int rom_bank;
     private int num_rom_banks;
     private int ram_bank;
@@ -219,12 +219,12 @@ public class MMU {
                     }
                     return 0;
                 }
-                else if(address < 0xff80) return 0; // Unusable
+                else if(address < 0xff80) return 0xff; // Unusable
                 else if(address != 0xffff) // Zero-page
                     return zero_page[address & 0x7f] & 0xff;
                 else return machine.interrupts_enabled;
         }
-        return 0;
+        return 0xff;
     }
 
     /**
@@ -316,7 +316,7 @@ public class MMU {
                         ram_bank = value & 0x3;
                         break;
                 }
-                ram_bank %= num_ram_banks;
+                ram_bank %= Math.max(1, num_ram_banks);
                 break;
             case 3: //0x6000 - 0x7fff
                 switch(mbc_type){

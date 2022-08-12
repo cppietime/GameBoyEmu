@@ -5,6 +5,7 @@ import com.funguscow.gb.frontend.Screen;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.util.List;
 
 /**
  * Represents the machine as a whole, holds certain registers
@@ -43,7 +44,7 @@ public class Machine {
      * @param ROM File containing ROM
      */
     public Machine(File ROM){
-        timer = new Timer();
+        timer = new Timer(this);
         keypad = new Keypad();
         soundBoard = new SoundBoard(); // Not yet used
         gpu = new GPU(this);
@@ -113,22 +114,45 @@ public class Machine {
      * Perform one instruction cycle
      */
     public void cycle(){
-        cpu.perform_op(this); // Execute an opcode after checking for interrupts
-        gpu.incr(cpu.m_delta); // Increment the GPU's state
-        timer.incr(this, cpu.m_delta); // Increment the timer's state
+        int m_cycles = cpu.perform_op(this); // Execute an opcode after checking for interrupts
+        gpu.incr(m_cycles); // Increment the GPU's state
+        timer.incr(m_cycles); // Increment the timer's state
+    }
+
+    public void test(InputStream source) {
+        mmu.left_bios = true;
+        List<OpcodeTest> tests = OpcodeTest.parse(source);
+        for (int i = 0; i < tests.size(); i++) {
+            OpcodeTest test = tests.get(i);
+            if (!test.test(this)) {
+                System.err.printf("Failed test #%d\n", i);
+                System.err.println(test.end);
+                cpu.dump_registers();
+                break;
+            }
+            System.out.printf("Passed test #%d\n", i);
+        }
     }
 
     public static void main(String[] args){
         Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb"));
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mem_timing\\mem_timing.gb"));
 //        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb"));
+//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\cpu_instrs\\individual\\02-interrupts.gb"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;
         machine.gpu.screen = screen;
         screen.makeContainer();
-        while(!machine.stop){
+//        try {
+//            InputStream source = new FileInputStream("D:\\Games\\GBA\\gbtest\\gameboy-test-data\\cpu_tests\\v1\\01.test");
+//            machine.test(source);
+//            source.close();
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+        while(true){
             machine.cycle();
         }
+//        System.out.println("Stopped");
     }
 
 }

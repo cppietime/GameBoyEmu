@@ -17,7 +17,7 @@ public class GPU {
         public boolean priority, y_flip, x_flip, use_pal1;
     }
 
-    private int line; // Current line being scanned
+    int line; // Current line being scanned
     private int window_line;
     private int mode = 2; // 0 - hblank, 1 - vblank, 2 - OAM, 3 - VRAM
     private int mode_cycles; // Cycles spent on this line
@@ -30,7 +30,7 @@ public class GPU {
     private int[] bg_pal = new int[4], ob0_pal = new int[4], ob1_pal = new int[4];
 
     private SpriteAttrib[] attribs = new SpriteAttrib[40];
-    private byte[] vram = new byte[VRAM_SIZE];
+    byte[] vram = new byte[VRAM_SIZE];
 
     private int[] z_buf = new int[144 * 160];
 
