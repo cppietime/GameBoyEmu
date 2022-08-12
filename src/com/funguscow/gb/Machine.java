@@ -119,7 +119,7 @@ public class Machine {
     }
 
     public static void main(String[] args){
-        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mem_timing\\individual\\01-read_timing.gb"));
+        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb"));
 //        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;

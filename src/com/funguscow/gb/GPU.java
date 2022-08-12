@@ -44,7 +44,7 @@ public class GPU {
     }
 
     public void init_state() {
-        mode = 1; // Is this even really right?
+        mode = 3; // Is this even really right?
         lyc_coincidence = true;
     }
 

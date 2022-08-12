@@ -10,7 +10,7 @@ public class CPU {
     int a, b, c, d, e, f, h, l;
     int pc, sp, pc_delta;
     boolean zero, carry, half, subtract;
-    boolean interrupts = true;
+    boolean interrupts = false;
     boolean halt_bug = false;
 
     Debugger debugger;
@@ -30,7 +30,7 @@ public class CPU {
         h = 0x01;
         l = 0x4d;
         sp = 0xfffe;
-        pc = 0x100; // Start with the opcode at 0x100, as this is what's loaded after the BIOS
+        pc = 0x00; // Start with the opcode at 0x100, as this is what's loaded after the BIOS
         this.debugger = debugger;
         this.logger = logger;
     }
@@ -40,6 +40,9 @@ public class CPU {
         if(machine.halt)
             m_delta = 1;
         else{
+            if (pc >= 0x100 && !mmu.left_bios) {
+                mmu.left_bios = true;
+            }
             int opcode = mmu.read8(pc);
             if (logger != null) {
                 logger.log(this);
@@ -116,8 +119,8 @@ public class CPU {
      * @return The number of m-cycles
      */
     public int opcode(Machine machine, int opcode){
-//        if (mmu.left_bios) {
-//            System.out.printf("%02x: %02x\n", pc - 1, opcode);
+//        if (!mmu.left_bios) {
+//            System.out.printf("%02x: %02x - %04x\n", pc - 1, opcode, sp);
 //        }
         calledOps.add(opcode);
         // Opcodes with common high nybbles
@@ -427,9 +430,7 @@ public class CPU {
 
             /* 0xX8 */
             case 0x08: // LD (nn),SP
-                mmu.write16(mmu.read16(pc), sp);
-                pc += 2;
-                return 5;
+                return store_sp();
             case 0x18: // JR n
                 return jump_relative(true);
             case 0x28: // JR Z,n
@@ -464,7 +465,7 @@ public class CPU {
             case 0xC9: // RET
                 pc = mmu.read16(sp);
                 sp += 2;
-                return 5;
+                return 4;
             case 0xE9: // JP (HL)
                 pc = (h << 8) | l;
                 return 1;
@@ -839,21 +840,6 @@ public class CPU {
         pc += 2;
         set_register(r, src);
         return 3;
-    }
-
-    private int ld_sp_hl(boolean relative) {
-        int src = get_register(10);
-        int cycles = 2;
-        if (relative) {
-            zero = subtract = false;
-            int offset = (byte)mmu.read8(pc++);
-            half = (src & 0xf) + (offset & 0xf) > 0xf;
-            carry = (src & 0xff) + (offset & 0xff) > 0xff;
-            src += offset;
-            cycles += 1;
-        }
-        sp = src;
-        return cycles;
     }
 
     private int store_sp() {
