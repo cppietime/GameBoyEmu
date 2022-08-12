@@ -1,7 +1,10 @@
+// TODO Not all MBCs are implemented (5 for sure will not work right yet)
+
 package com.funguscow.gb;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.stream.Collectors;
 
 /**
@@ -38,7 +41,7 @@ public class MMU {
     private int ram_bank;
     private int num_ram_banks;
     private int mbc_type;
-    private boolean mbc1_ram_32k;
+    private boolean mbc1_bank_mode;
     private boolean ram_enabled;
     private int mbc3_rtc_register;
     private int mbc3_rtc_latch;
@@ -117,6 +120,49 @@ public class MMU {
     }
 
     /**
+     * Load the external RAM from a byte array
+     * @param RAM Source
+     * @param offset offset into external ram
+     * @param len number of bytes
+     */
+    public void load_RAM(byte[] RAM, int offset, int len) {
+        System.arraycopy(RAM, 0, external_ram, offset, len);
+    }
+
+    /**
+     * Load external RAM from stream
+     * @param RAM source
+     * @param offset offset into ram
+     * @param len number of bytes
+     * @throws IOException from inner read
+     */
+    public void load_RAM(InputStream RAM, int offset, int len) throws IOException {
+        RAM.read(external_ram, offset, len);
+    }
+
+    /**
+     * Save external RAM to another array
+     * @param RAM destination
+     * @param dstOffset offset in RAM
+     * @param srcOffset offset from external ram
+     * @param len length in bytes
+     */
+    public void save_RAM(byte[] RAM, int dstOffset, int srcOffset, int len) {
+        System.arraycopy(external_ram, srcOffset, RAM, dstOffset, len);
+    }
+
+    /**
+     * Save external RAM to a stream
+     * @param RAM destination
+     * @param offset offset in self
+     * @param len length in bytes
+     * @throws IOException from inner read
+     */
+    public void save_RAM(OutputStream RAM, int offset, int len) throws IOException {
+        RAM.write(external_ram, offset, len);
+    }
+
+    /**
      * Directly transfer memory from ROM/RAM to OAM
      * @param base Base address for DMA
      */
@@ -132,15 +178,18 @@ public class MMU {
      * @return The byte at [address]
      */
     public int read8(int address){
-//        if(!left_bios && address >= 0x100) {
-//            left_bios = true;
-//        }
         switch(address >> 13){
             case 0:
                 if(address < 0x100 && !left_bios)
                     return BIOS[address];
             case 1: //0x0000 - 0x3fff
-                return rom[address] & 0xff;
+                switch (mbc_type) {
+                    case 1:
+                        if (mbc1_bank_mode)
+                            return rom[address | ((rom_bank & ~0x1f) << 14)] & 0xff;
+                    default:
+                        return rom[address] & 0xff;
+                }
             case 2:
             case 3: //0x4000 - 0x7fff
                 return rom[(address & 0x3fff) + (rom_bank << 14)] & 0xff;
@@ -151,7 +200,8 @@ public class MMU {
                     case 1:
                     case 5: // Just write RAM if it's there
                         if(ram_enabled){
-                            int ram_addr = (address & 0x1fff) + (ram_bank << 13);
+                            int erb = mbc1_bank_mode ? ram_bank : 0;
+                            int ram_addr = (address & 0x1fff) | (erb << 13);
                             if(ram_addr < ram_size)
                                 return external_ram[ram_addr] & 0xff;
                         }
@@ -227,6 +277,7 @@ public class MMU {
      * @param value Value to write
      */
     public void write8(int address, int value){
+        // For debugging serial IO ouput
 //        if (address == 0xff01) {
 //            char c = (value == ' ') ? '\n' : (char)value;
 //            System.out.print(c);
@@ -282,12 +333,10 @@ public class MMU {
                 switch(mbc_type){
                     case 1: // Write high 2 bits of ROM bank, or RAM bank
                         value &= 0x3;
-                        if(mbc1_ram_32k)
+                        if(ram_enabled && mbc1_bank_mode)
                             ram_bank = value;
-                        else {
-                            rom_bank &= 0x1f;
-                            rom_bank |= value << 5;
-                        }
+                        rom_bank &= 0x1f;
+                        rom_bank |= value << 5;
                         break;
                     case 3: // Write RAM bank if <=3 or enable RTC registers
                         if(value <= 3) {
@@ -307,13 +356,7 @@ public class MMU {
             case 3: //0x6000 - 0x7fff
                 switch(mbc_type){
                     case 1: // Set ROM/RAM mode
-                        mbc1_ram_32k = (value & 1) != 0;
-                        if(mbc1_ram_32k) {
-                            rom_bank &= 0x1f;
-                            rom_bank %= num_rom_banks;
-                        }
-                        else
-                            ram_bank = 0;
+                        mbc1_bank_mode = (value & 1) != 0;
                         break;
                     case 3: // Latch RTC
                         if((mbc3_rtc_latch & 1) == 0 && value == 0)
@@ -333,7 +376,8 @@ public class MMU {
                     case 1:
                     case 5: // Just write RAM if it's there
                         if(ram_enabled){
-                            int ram_addr = (address & 0x1fff) + (ram_bank << 13);
+                            int erb = mbc1_bank_mode ? ram_bank : 0;
+                            int ram_addr = (address & 0x1fff) + (erb << 13);
                             if(ram_addr < ram_size)
                                 external_ram[ram_addr] = (byte)(value & 0xff);
                         }

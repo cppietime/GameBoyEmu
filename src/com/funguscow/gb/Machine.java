@@ -2,15 +2,15 @@ package com.funguscow.gb;
 
 import com.funguscow.gb.frontend.Screen;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStream;
+import java.io.*;
 import java.util.List;
 
 /**
  * Represents the machine as a whole, holds certain registers
  */
 public class Machine {
+
+    public static final int[] RAM_SIZES = {0, 1 << 11, 1 << 13, 1 << 15, 1 << 17};
 
     public enum MachineMode{
         GAMEBOY(1),
@@ -61,9 +61,9 @@ public class Machine {
             int rom_banks;
             int ram_size = 0;
             if(header[0x149] != 0){
-                ram_size = 0x800 << (2 * header[0x149]);
+                ram_size = RAM_SIZES[header[0x149]];
             }
-            System.out.printf("Cartridge type = %02x\n", cartridge_type);
+            System.out.printf("Cartridge type = %02x, ramkey = %02x\n", cartridge_type, header[0x149]);
             switch(cartridge_type){
                 case 0:
                     ram_size = 0; break;
@@ -113,6 +113,20 @@ public class Machine {
     }
 
     /**
+     * Load up the saved external RAM
+     * @param RAM File containing literal binary data of external RAM state
+     */
+    public void loadRAM(File RAM) {
+        try {
+            InputStream is = new FileInputStream(RAM);
+            mmu.load_RAM(is, 0, mmu.external_ram.length);
+            is.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
      * Perform one instruction cycle
      */
     public void cycle(){
@@ -121,6 +135,10 @@ public class Machine {
         timer.incr(m_cycles); // Increment the timer's state
     }
 
+    /**
+     * Test single opcode tests
+     * @param source Inputstream to file specifying test
+     */
     public void test(InputStream source) {
         mmu.left_bios = true;
         List<OpcodeTest> tests = OpcodeTest.parse(source);
@@ -140,9 +158,10 @@ public class Machine {
 //        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb"));
 //        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb"));
 //        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mem_timing\\mem_timing.gb"));
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\interrupt_time\\interrupt_time.gb"));
-        Machine machine = new Machine(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb"));
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mario_land.gb"));
+//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc1\\rom_16Mb.gb"));
+//        Machine machine = new Machine(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb"));
+//        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
+        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mario_land.gb"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;
         machine.gpu.screen = screen;
@@ -154,10 +173,17 @@ public class Machine {
 //        } catch (Exception e) {
 //            e.printStackTrace();
 //        }
-        while(true){
+        while(screen.isOpen()){
             machine.cycle();
         }
-//        System.out.println("Stopped");
+//        try {
+//            OutputStream os = new FileOutputStream("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram");
+//            machine.mmu.save_RAM(os, 0, machine.mmu.external_ram.length);
+//            os.close();
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+        System.out.println("Stopped");
     }
 
 }

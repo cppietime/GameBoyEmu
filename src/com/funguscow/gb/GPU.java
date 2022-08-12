@@ -93,7 +93,7 @@ public class GPU {
                 mty &= 31;
                 ty &= 7;
                 int row_base = tiledata_base + ty * 2;
-                for (int tx = 0; tx < 20; tx++) {
+                for (int tx = 0; tx < 21; tx++) {
                     int mtx = ((tx << 3) + scroll_x) >> 3;
                     mtx &= 31;
                     int tile_num = vram[tilemap_base + mty * 32 + mtx] & 0xff;
@@ -104,6 +104,9 @@ public class GPU {
                         int screen_x = x - (scroll_x & 7) + tx * 8;
                         if (screen_x < 0) {
                             break;
+                        }
+                        if (screen_x >= SCREEN_WIDTH) {
+                            continue;
                         }
                         int palid = ((row1 & 1) << 1) | (row0 & 1);
                         row1 >>= 1;
@@ -122,7 +125,7 @@ public class GPU {
                 int mty = wline >> 3;
                 int ty = wline & 7;
                 if(wline >= 0){
-                    for(int tx = 0; tx < 20; tx ++){
+                    for(int tx = 0; tx < 21; tx ++){
                         int index = tilemap_base + mty * 32 + tx;
                         if (index >= VRAM_SIZE) {
                             continue;

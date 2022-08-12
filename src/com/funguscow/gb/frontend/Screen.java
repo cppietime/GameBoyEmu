@@ -7,6 +7,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
+import java.awt.event.WindowEvent;
+import java.awt.event.WindowListener;
 import java.awt.image.BufferStrategy;
 import java.awt.image.BufferedImage;
 
@@ -14,14 +16,55 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
 
     private final BufferedImage image;
     private BufferStrategy strategy;
+    private boolean open = true;
     public Keypad keypad;
 
     public Screen(){
         image = new BufferedImage(160, 144, BufferedImage.TYPE_INT_RGB);
     }
 
+    public boolean isOpen() {
+        return open;
+    }
+
     public void makeContainer(){
         JFrame frame = new JFrame("Test emulator");
+        frame.addWindowListener(new WindowListener() {
+            @Override
+            public void windowOpened(WindowEvent e) {
+
+            }
+
+            @Override
+            public void windowClosing(WindowEvent e) {
+                System.out.println("Closing");
+                open = false;
+            }
+
+            @Override
+            public void windowClosed(WindowEvent e) {
+            }
+
+            @Override
+            public void windowIconified(WindowEvent e) {
+
+            }
+
+            @Override
+            public void windowDeiconified(WindowEvent e) {
+
+            }
+
+            @Override
+            public void windowActivated(WindowEvent e) {
+
+            }
+
+            @Override
+            public void windowDeactivated(WindowEvent e) {
+
+            }
+        });
         JPanel panel = (JPanel) frame.getContentPane();
         panel.setPreferredSize(new Dimension(160, 144));
         panel.setLayout(null);
