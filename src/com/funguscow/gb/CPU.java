@@ -346,32 +346,13 @@ public class CPU {
                 }
                 return 1;
             case 0xC6: // ADD A,n
-            {
                 return add8_r_rn(7, -1, false);
-            }
             case 0xD6: // SUB A,n
-            {
                 return sub8_r_r(7, -1, false, true);
-            }
             case 0xE6: // AND A,n
-            {
-                subtract = carry = false;
-                int n = mmu.read8(pc);
-                pc ++;
-                half = true;
-                a &= n;
-                zero = a == 0;
-                return 2;
-            }
+                return and_xor8_r_rn(7, -1, false);
             case 0xF6: // OR A,n
-            {
-                subtract = carry = half = false;
-                int n = mmu.read8(pc);
-                pc ++;
-                a |= n;
-                zero = a == 0;
-                return 2;
-            }
+                return or8_r_rn(7, -1);
 
             /* 0xX7 */
             case 0x07: // RLCA
@@ -408,25 +389,13 @@ public class CPU {
                 subtract = half = false;
                 return 1;
             case 0xC7: // RST 0x00
-                sp -= 2;
-                mmu.write16(sp, pc);
-                pc = 0x00;
-                return 8;
+                return rst(0x00);
             case 0xD7: // RST 0x10
-                sp -= 2;
-                mmu.write16(sp, pc);
-                pc = 0x10;
-                return 8;
+                return rst(0x10);
             case 0xE7: // RST 0x20
-                sp -= 2;
-                mmu.write16(sp, pc);
-                pc = 0x20;
-                return 8;
+                return rst(0x20);
             case 0xF7: // RST 0x30
-                sp -= 2;
-                mmu.write16(sp, pc);
-                pc = 0x30;
-                return 8;
+                return rst(0x30);
 
             /* 0xX8 */
             case 0x08: // LD (nn),SP
@@ -502,47 +471,13 @@ public class CPU {
 
 
             case 0xCE: // ADC A,n
-            {
-                int cf = carry ? 1 : 0;
-                int n = mmu.read8(pc);
-                pc ++;
-                subtract = false;
-                half = (a & 0xf) + (n & 0xf) + cf > 0xf;
-                a += n + cf;
-                carry = a > 0xff;
-                a &= 0xff;
-                zero = a == 0;
-                return 1;
-            }
+                return add8_r_rn(7, -1, true);
             case 0xDE: // SBC A,n
-            {
-                int n = mmu.read8(pc);
-                pc ++;
-                int cf = carry ? 1 : 0;
-                subtract = true;
-                half = (a & 0xf) < ((n & 0xf) + cf);
-                a -= n + cf;
-                carry = a < 0;
-                a &= 0xff;
-                zero = a == 0;
-                return 2;
-            }
+                return sub8_r_r(7, -1, true, true);
             case 0xEE: // XOR A,n
-                half = carry = subtract = false;
-                a ^= mmu.read8(pc);
-                pc ++;
-                zero = a == 0;
-                return 2;
+                return and_xor8_r_rn(7, -1, true);
             case 0xFE: // CMP A,n
-            {
-                int n = mmu.read8(pc);
-                pc ++;
-                half = (a & 0xf) < (n & 0xf);
-                subtract = true;
-                carry = a < n;
-                zero = a == n;
-                return 2;
-            }
+                return sub8_r_r(7, -1, false, false);
 
             /* 0xXF */
             case 0x0F: // RRCA
@@ -568,25 +503,13 @@ public class CPU {
                 subtract = half = false;
                 return 1;
             case 0xCF: // RST 0x08
-                sp -= 2;
-                mmu.write16(sp, pc);
-                pc = 0x08;
-                return 8;
+                return rst(0x08);
             case 0xDF: // RST 0x18
-                sp -= 2;
-                mmu.write16(sp, pc);
-                pc = 0x18;
-                return 8;
+                return rst(0x18);
             case 0xEF: // RST 0x28
-                sp -= 2;
-                mmu.write16(sp, pc);
-                pc = 0x28;
-                return 8;
+                return rst(0x28);
             case 0xFF: // RST 0x38
-                sp -= 2;
-                mmu.write16(sp, pc);
-                pc = 0x38;
-                return 8;
+                return rst(0x38);
             default:
                 unimplemented(opcode);
         }
@@ -899,6 +822,13 @@ public class CPU {
             return 5;
         }
         return 2;
+    }
+
+    private int rst(int address) {
+        sp -= 2;
+        mmu.write16(sp, pc);
+        pc = address;
+        return 4;
     }
 
     private int rlc(int reg){
