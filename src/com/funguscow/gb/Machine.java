@@ -1,5 +1,6 @@
 package com.funguscow.gb;
 
+import com.funguscow.gb.frontend.PcSpeaker;
 import com.funguscow.gb.frontend.Screen;
 
 import java.io.*;
@@ -140,6 +141,7 @@ public class Machine {
         int m_cycles = cpu.perform_op(this); // Execute an opcode after checking for interrupts
         gpu.incr(m_cycles); // Increment the GPU's state
         timer.incr(m_cycles); // Increment the timer's state
+        soundBoard.step(m_cycles);
     }
 
     /**
@@ -163,16 +165,19 @@ public class Machine {
 
     public static void main(String[] args){
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
-        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
+//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
+        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb";
-//        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
         Machine machine = new Machine(new File(ROMPath));
+//        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;
         machine.gpu.screen = screen;
         screen.makeContainer();
+        PcSpeaker speaker = new PcSpeaker();
+        machine.soundBoard.setSpeaker(speaker);
 //        try {
 //            InputStream source = new FileInputStream("D:\\Games\\GBA\\gbtest\\gameboy-test-data\\cpu_tests\\v1\\01.test");
 //            machine.test(source);

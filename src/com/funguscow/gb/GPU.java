@@ -247,7 +247,7 @@ public class GPU {
                         long targetWait = MS_BETWEEN_VBLANKS - passed;
                         if (targetWait > WAIT_THRESHOLD) {
                             try {
-                                Thread.sleep(targetWait);
+//                                Thread.sleep(targetWait);
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }
