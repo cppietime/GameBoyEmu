@@ -97,6 +97,8 @@ public class CPU {
         sp -= 2;
         mmu.write16(sp, pc);
         pc = address;
+        m_delta += 5;
+        interrupts = false;
     }
 
     private void unimplemented(int opcode){
@@ -334,11 +336,13 @@ public class CPU {
                 if(interrupts)
                     machine.halt = true;
                 else{
-                    if((machine.interrupts_fired & machine.interrupts_enabled & 0x1f) != 0){
-                        halt_bug = true;
-                    }
-                    else
-                        machine.halt = true;
+//                    if((machine.interrupts_fired & machine.interrupts_enabled & 0x1f) != 0){
+//                        halt_bug = true;
+//                    }
+//                    else
+//                        machine.halt = true;
+                    machine.halt = true;
+                    halt_bug = true;
                 }
                 return 1;
             case 0xC6: // ADD A,n

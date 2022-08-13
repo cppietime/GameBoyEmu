@@ -8,7 +8,7 @@ import java.util.Comparator;
  */
 public class GPU {
 
-    public static final int INTER_BLANK_MS = (144 * (51 + 20 + 43)) * 1000 / (1 << 20);
+    public static final int MS_BETWEEN_VBLANKS = (144 * (51 + 20 + 43)) * 1000 / (1 << 20);
     public static final int WAIT_THRESHOLD = 4;
 
     public  interface GameboyScreen {
@@ -105,12 +105,12 @@ public class GPU {
                         if (screen_x < 0) {
                             break;
                         }
-                        if (screen_x >= SCREEN_WIDTH) {
-                            continue;
-                        }
                         int palid = ((row1 & 1) << 1) | (row0 & 1);
                         row1 >>= 1;
                         row0 >>= 1;
+                        if (screen_x >= SCREEN_WIDTH) {
+                            continue;
+                        }
                         int shade = bg_pal[palid] * 85; // Transform [0,3] to [0,255]
                         shade = 255 - shade;
                         screen.putPixel(screen_x, line, (shade << 16) | (shade << 8) | shade);
@@ -137,11 +137,12 @@ public class GPU {
                         int row1 = vram[tile_num * 16 + row_base + 1];
                         for(int x = 7; x >= 0; x--){
                             int screen_x = x - 7 + tx * 8 + window_x;
-                            if(screen_x < 0 || screen_x >= 160)
-                                continue; // Off-screen
                             int palid = ((row1 & 1) << 1) | (row0 & 1);
                             row1 >>= 1;
                             row0 >>= 1;
+                            if(screen_x < 0 || screen_x >= 160) {
+                                continue; // Off-screen
+                            }
                             int shade = bg_pal[palid] * 85; // Transform [0,3] to [0,255]
                             shade = 255 - shade;
                             screen.putPixel(screen_x, line, (shade << 16) | (shade << 8) | shade);
@@ -194,7 +195,7 @@ public class GPU {
                     int color = (sprite.use_pal1 ? ob1_pal : ob0_pal)[pixel] * 85;
                     boolean draw = !sprite.priority;
                     draw |= z_buf[line * 160 + screenX] == 0;
-                    draw &= (color != 0);
+                    draw &= (pixel != 0);
                     if (draw) {
                         color = 255 - color;
                         screen.putPixel(screenX, line, (color << 16) | (color << 8) | color);
@@ -210,6 +211,14 @@ public class GPU {
      * @param cycles Cycles to increment (m-cycles)
      */
     public void incr(int cycles){
+        if (!lcd_on) {
+            mode = 0;
+            mode_cycles = 0;
+            line = 0;
+//            sprites_on = false;
+//            bg_on = false;
+            return;
+        }
         mode_cycles += cycles;
         switch(mode){
             case 0: // Hblank
@@ -235,7 +244,7 @@ public class GPU {
                             machine.interrupts_fired |= 0x2;
                         mode = 1;
                         long passed = System.currentTimeMillis() - lastVBlank;
-                        long targetWait = INTER_BLANK_MS - passed;
+                        long targetWait = MS_BETWEEN_VBLANKS - passed;
                         if (targetWait > WAIT_THRESHOLD) {
                             try {
                                 Thread.sleep(targetWait);
@@ -376,6 +385,8 @@ public class GPU {
             case 0xf: // OAM and registers
                 switch((address >> 8) & 0xf) {
                     case 0xe: // OAM
+                        if (mode > 1)
+                            break;
                         int offset = address & 0xff;
                         if (offset >= 0xa0)
                             break;

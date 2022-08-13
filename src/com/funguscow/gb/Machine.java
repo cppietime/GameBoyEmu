@@ -88,7 +88,7 @@ public class Machine {
                     mbc = 5; break;
             }
             rom_banks = header[0x148];
-            if(rom_banks <= 6)
+            if(rom_banks <= 8)
                 rom_banks = 1 << (1 + rom_banks);
             else switch(rom_banks){
                 case 0x52:
@@ -158,10 +158,10 @@ public class Machine {
 //        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb"));
 //        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb"));
 //        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mem_timing\\mem_timing.gb"));
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc1\\rom_16Mb.gb"));
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb"));
-//        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
-        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mario_land.gb"));
+//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb"));
+        Machine machine = new Machine(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb"));
+        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
+//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mario_land.gb"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;
         machine.gpu.screen = screen;

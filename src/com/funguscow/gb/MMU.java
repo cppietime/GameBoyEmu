@@ -49,7 +49,7 @@ public class MMU {
     private int minutes;
     private int hours;
     private int days;
-    private boolean mbc3_halt_rtc;
+    private boolean mbc3_halt_rtc, mbc3_days_overflow;
     public boolean left_bios = false;
 
     /**
@@ -192,13 +192,12 @@ public class MMU {
                 }
             case 2:
             case 3: //0x4000 - 0x7fff
-                return rom[(address & 0x3fff) + (rom_bank << 14)] & 0xff;
+                return rom[(address & 0x3fff) | (rom_bank << 14)] & 0xff;
             case 4: //0x8000 - 0x9fff
                 return machine.gpu.read(address);
             case 5: //0xa000 - 0xbfff
                 switch(mbc_type){
                     case 1:
-                    case 5: // Just write RAM if it's there
                         if(ram_enabled){
                             int erb = mbc1_bank_mode ? ram_bank : 0;
                             int ram_addr = (address & 0x1fff) | (erb << 13);
@@ -207,14 +206,14 @@ public class MMU {
                         }
                         return 0xff;
                     case 2: // Write low 4 bits of "RAM"
-                        if(ram_enabled && address < 0xa200){
-                            return external_ram[address & 0x1ff] & 0xf;
+                        if(ram_enabled){
+                            return 0xf0 | (external_ram[address & 0x1ff] & 0xf);
                         }
                         return 0xff;
                     case 3: // Either write RAM or set a register
                         switch(mbc3_rtc_register){
                             case 0:
-                                return external_ram[(ram_bank << 13) + (address & 0x1fff)] & 0xff;
+                                return external_ram[(ram_bank << 13) | (address & 0x1fff)] & 0xff;
                             case 8:
                                 return seconds;
                             case 9:
@@ -224,9 +223,13 @@ public class MMU {
                             case 11:
                                 return days & 0xff;
                             case 12:
-                                return (days >> 8) | (mbc3_halt_rtc ? 0x40 : 0);
+                                return (days >> 8) | (mbc3_halt_rtc ? 0x40 : 0) | (mbc3_days_overflow ? 0x80 : 0);
                         }
                         return 0xff;
+                    case 5:
+                        if (ram_enabled) {
+                            return external_ram[(address & 0x1fff) | (ram_bank << 13)] & 0xff;
+                        }
                 }
                 return 0xff;
             case 6: //0xc000 - 0xdfff
@@ -292,6 +295,12 @@ public class MMU {
                     case 2: // Enable/disable RAM if high address byte is even
                         if(((address >> 8) & 1) == 0)
                             ram_enabled = (value & 0xf) == 0xa;
+                        else {
+                            value &= 0xf;
+                            if(value == 0)
+                                value = 1;
+                            rom_bank = value;
+                        }
                         break;
                 }
                 break;
@@ -305,11 +314,14 @@ public class MMU {
                         rom_bank |= value;
                         break;
                     case 2: // Set ROM bank, but only if high address byte is odd
-                        value &= 0xf;
-                        if(value == 0)
-                            value = 1;
-                        if(((address >> 8) & 1) == 1)
+                        if(((address >> 8) & 1) == 0)
+                            ram_enabled = (value & 0xf) == 0xa;
+                        else {
+                            value &= 0xf;
+                            if(value == 0)
+                                value = 1;
                             rom_bank = value;
+                        }
                         break;
                     case 3: // Set ROM bank
                         value &= 0x7f;
@@ -347,7 +359,7 @@ public class MMU {
                             mbc3_rtc_register = value;
                         break;
                     case 5: // Write RAM bank
-                        ram_bank = value & 0x3;
+                        ram_bank = value & 0xf;
                         break;
                 }
                 rom_bank %= num_rom_banks;
@@ -363,8 +375,6 @@ public class MMU {
                             mbc3_rtc_latch ++;
                         else if((mbc3_rtc_latch & 1) != 0 && value == 1)
                             mbc3_rtc_latch = (mbc3_rtc_latch + 1) & 3;
-                        else
-                            mbc3_rtc_latch &= ~1;
                         break;
                 }
                 break;
@@ -383,7 +393,7 @@ public class MMU {
                         }
                         break;
                     case 2: // Write low 4 bits of "RAM"
-                        if(ram_enabled && address < 0xa200){
+                        if(ram_enabled){
                             external_ram[address & 0x1ff] = (byte)(value & 0xf);
                         }
                         break;
@@ -403,6 +413,7 @@ public class MMU {
                                 days &= 0xff;
                                 days |= (value & 1) << 8;
                                 mbc3_halt_rtc = (value & 0x40) != 0;
+                                mbc3_days_overflow = (value & 0x80) != 0;
                                 break;
                         }
                         break;
