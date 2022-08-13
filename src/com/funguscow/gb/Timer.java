@@ -35,6 +35,7 @@ public class Timer {
             if (pending_overflow) {
                 tima = tma;
                 machine.interrupts_fired |= 4;
+                pending_overflow = false;
             }
             divider = (divider + 1) & 0xffff;
             update_edge();

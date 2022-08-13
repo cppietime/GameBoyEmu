@@ -13,6 +13,8 @@ public class CPU {
     boolean interrupts = false;
     boolean halt_bug = false;
 
+    int lastInt = 0;
+
     Debugger debugger;
     Logger logger;
 
@@ -103,6 +105,7 @@ public class CPU {
 
     private void int_rst(int address){
 //        System.out.println("Handling interrupt at " + address);
+        lastInt = address;
         sp -= 2;
         mmu.write16(sp, pc);
         pc = address;
@@ -437,6 +440,7 @@ public class CPU {
             }
 
             case 0xD9: // RETI
+                lastInt = 0;
                 interrupts = true;
                 /* Fall through */
             case 0xC9: // RET
@@ -542,21 +546,21 @@ public class CPU {
     private void set_register(int id, int value){
         switch(id){
             case 0:
-                b = value; break;
+                b = value & 0xff; break;
             case 1:
-                c = value; break;
+                c = value & 0xff; break;
             case 2:
-                d = value; break;
+                d = value & 0xff; break;
             case 3:
-                e = value; break;
+                e = value & 0xff; break;
             case 4:
-                h = value; break;
+                h = value & 0xff; break;
             case 5:
-                l = value; break;
+                l = value & 0xff; break;
             case 6:
                 mmu.write8((h << 8) | l, value); break;
             case 7:
-                a = value; break;
+                a = value & 0xff; break;
             case 8:
                 b = value >> 8;
                 c = value & 0xff;
