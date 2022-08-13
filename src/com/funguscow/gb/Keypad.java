@@ -32,6 +32,7 @@ public class Keypad {
     public void keyDown(int key){
         if((keys_up & (1 << key)) != 0){
             machine.interrupts_fired |= 0x10;
+            machine.stop = false;
         }
         keys_up &= ~(1 << key);
     }

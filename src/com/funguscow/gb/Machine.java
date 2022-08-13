@@ -130,6 +130,13 @@ public class Machine {
      * Perform one instruction cycle
      */
     public void cycle(){
+        while (stop) {
+            try {
+                Thread.sleep(16);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
         int m_cycles = cpu.perform_op(this); // Execute an opcode after checking for interrupts
         gpu.incr(m_cycles); // Increment the GPU's state
         timer.incr(m_cycles); // Increment the timer's state
@@ -155,13 +162,12 @@ public class Machine {
     }
 
     public static void main(String[] args){
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb"));
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb"));
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mem_timing\\mem_timing.gb"));
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb"));
-        Machine machine = new Machine(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb"));
-        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
-//        Machine machine = new Machine(new File("D:\\Games\\GBA\\gbtest\\mario_land.gb"));
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
+        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb";
+//        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
+        Machine machine = new Machine(new File(ROMPath));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;
         machine.gpu.screen = screen;

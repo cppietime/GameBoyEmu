@@ -37,6 +37,9 @@ public class CPU {
 
     public int perform_op(Machine machine){
         pc &= 0xffff;
+        if (checkInterrupt(machine)) {
+            return m_delta;
+        }
         if(machine.halt || machine.stop)
             m_delta = 1;
         else {
@@ -49,35 +52,41 @@ public class CPU {
             }
             if(debugger != null)
                 debugger.debug(pc, this, opcode);
-            halt_bug = false;
             m_delta = opcode(machine, opcode);
         }
         m += m_delta;
+        return m_delta;
+    }
+
+    private boolean checkInterrupt(Machine machine) {
         int interrupt_handles = machine.interrupts_enabled & machine.interrupts_fired & 0x1f;
         if(interrupt_handles != 0){
             machine.halt = false;
             if(interrupts) {
-                interrupts = false;
                 if ((interrupt_handles & 1) != 0) { // V-blank
                     machine.interrupts_fired &= ~1;
                     int_rst(0x40);
+                    return true;
                 } else if ((interrupt_handles & 2) != 0) { // LCDC interrupt
                     machine.interrupts_fired &= ~2;
                     int_rst(0x48);
+                    return true;
                 } else if ((interrupt_handles & 4) != 0) { // Timer overflow
                     machine.interrupts_fired &= ~4;
                     int_rst(0x50);
+                    return true;
                 } else if ((interrupt_handles & 8) != 0) { // Serial transfer
                     machine.interrupts_fired &= ~8;
                     int_rst(0x58);
+                    return true;
                 } else if ((interrupt_handles & 16) != 0) { // P10-P13 Hi->Lo
                     machine.interrupts_fired &= ~16;
                     int_rst(0x60);
-                } else
-                    interrupts = true;
+                    return true;
+                }
             }
         }
-        return m_delta;
+        return false;
     }
 
     public void dump_registers(){
@@ -97,7 +106,7 @@ public class CPU {
         sp -= 2;
         mmu.write16(sp, pc);
         pc = address;
-        m_delta += 5;
+        m_delta = 5;
         interrupts = false;
     }
 
