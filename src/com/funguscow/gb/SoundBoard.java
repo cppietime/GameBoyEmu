@@ -3,6 +3,7 @@ package com.funguscow.gb;
 public class SoundBoard {
 
     private static final int BUFFER_SIZE = 2048;
+    private static final byte[] DUTY = {(byte)1, (byte)0x81, (byte)0x87, (byte)0x7E};
 
     public static class SpeakerFormat {
         public int sampleRate;
@@ -68,6 +69,7 @@ public class SoundBoard {
     // 0xFF13 - NR13, 0xFF14 - NR14
     private int initialFrequencyDivisor1; //0xFF13, 0xFF14[0-2], WO
     private int frequencyDivisor1; // Internal
+    private int frequencyCounter1; // Intenral
     private boolean useLength1; // 6
     private boolean enable1; // 7, WO
 
@@ -84,6 +86,7 @@ public class SoundBoard {
     private int envelopeCounter2; // Internal
     // 0xFF18 - NR23, 0xFF19 - NR24
     private int frequencyDivisor2; // 0xFF18, 0xFF19[0-2], WO
+    private int frequencyCounter2; // Internal
     private boolean useLength2; // 6
     private boolean enable2; // 7, WO
 
@@ -105,7 +108,8 @@ public class SoundBoard {
     // 0xFF20 - NR41
     private int length4; // 0-5, WO
     // 0xFF21 - NR42
-    private int envelope4; // 4-7
+    private int initialEnvelope4; // 4-7
+    private int envelope4; // Internal
     private boolean envelopeAscending4; // 3
     private int envelopeSweep4; // 0-2
     private int envelopeCounter4; // Internal
@@ -113,9 +117,11 @@ public class SoundBoard {
     private int frequencyShift4; // 4-7
     private boolean lowBitWidth4; // 3
     private int frequencyDivisor4; // 0-2
+    private int frequencyCounter4; // Internal
     // 0xFF23 - NR44
     private boolean useLength4; // 6
     private boolean enable4; // 7, WO
+    private int lfsr4; // Internal
 
     // Control
     // 0xFF24 - NR50
@@ -167,7 +173,7 @@ public class SoundBoard {
                 value = 0x3f | (duty1 << 6);
                 break;
             case 0x2:
-                value = (initialEnvelope1 << 4) | (envelopeAscending1 ? 0x80 : 0) | envelopeSweep1;
+                value = (initialEnvelope1 << 4) | (envelopeAscending1 ? 0x8 : 0) | envelopeSweep1;
                 break;
             case 0x4:
                 value = 0xbf | (useLength1 ? 0x40 : 0);
@@ -176,7 +182,7 @@ public class SoundBoard {
                 value = 0x3f | (duty2 << 6);
                 break;
             case 0x7:
-                value = (initialEnvelope2 << 4) | (envelopeAscending2 ? 0x80 : 0) | envelopeSweep1;
+                value = (initialEnvelope2 << 4) | (envelopeAscending2 ? 0x8 : 0) | envelopeSweep1;
                 break;
             case 0x9:
                 value = 0xbf | (useLength2 ? 0x40 : 0);
@@ -194,8 +200,8 @@ public class SoundBoard {
                 value = 0xC0 | length4;
                 break;
             case 0x11:
-                value |= envelope4 << 4;
-                value |= envelopeAscending4 ? 0x80 : 0;
+                value |= initialEnvelope4 << 4;
+                value |= envelopeAscending4 ? 0x8 : 0;
                 value |= envelopeSweep4;
                 break;
             case 0x12:
@@ -254,11 +260,11 @@ public class SoundBoard {
                 break;
             case 0x1:
                 duty1 = (value >> 6) & 7;
-                length1 = value & 63;
+                length1 = 64 - (value & 63);
                 break;
             case 0x2:
                 initialEnvelope1 = (value >> 4) & 0xf;
-                envelopeAscending1 = (value & 0x80) != 0;
+                envelopeAscending1 = (value & 0x8) != 0;
                 envelopeSweep1 = value & 7;
                 break;
             case 0x3:
@@ -267,24 +273,28 @@ public class SoundBoard {
                 break;
             case 0x4:
                 initialFrequencyDivisor1 &= 0xff;
-                initialFrequencyDivisor1 |= (value & 3) << 8;
+                initialFrequencyDivisor1 |= (value & 7) << 8;
                 useLength1 = (value & 0x40) != 0;
                 enable1 = (value & 0x80) != 0;
                 if (enable1) {
                     frequencyDivisor1 = initialFrequencyDivisor1;
+                    frequencyCounter1 = 2048 - frequencyDivisor1;
                     envelope1 = initialEnvelope1;
                     sweepCounter1 = 0;
                     waveCounter1 = 0;
                     envelopeCounter1 = 0;
+                    if (length1 == 0) {
+                        length1 = 64;
+                    }
                 }
                 break;
             case 0x6:
                 duty2 = (value >> 6) & 7;
-                length2 = value & 63;
+                length2 = 64 - (value & 63);
                 break;
             case 0x7:
                 initialEnvelope2 = (value >> 4) & 0xf;
-                envelopeAscending2 = (value & 0x80) != 0;
+                envelopeAscending2 = (value & 0x8) != 0;
                 envelopeSweep2 = value & 7;
                 break;
             case 0x8:
@@ -293,11 +303,12 @@ public class SoundBoard {
                 break;
             case 0x9:
                 frequencyDivisor2 &= 0xff;
-                frequencyDivisor2 |= (value & 3) << 8;
+                frequencyDivisor2 |= (value & 7) << 8;
                 useLength2 = (value & 0x40) != 0;
                 enable2 = (value & 0x80) != 0;
                 if (enable2) {
                     envelope2 = initialEnvelope2;
+                    frequencyCounter2 = 2048 - frequencyDivisor2;
                     waveCounter2 = 0;
                     envelopeCounter2 = 0;
                 }
@@ -306,7 +317,7 @@ public class SoundBoard {
                 on3 = (value & 0x80) != 0;
                 break;
             case 0xB:
-                length3 = value & 0xff;
+                length3 = 256 - (value & 0xff);
                 break;
             case 0xC:
                 volume3 = (value >> 5) & 3;
@@ -322,11 +333,11 @@ public class SoundBoard {
                 enable3 = (value & 0x80) != 0;
                 break;
             case 0x10:
-                length4 = value & 63;
+                length4 = 64 - (value & 63);
                 break;
             case 0x11:
-                envelope4 = (value >> 4) & 0xf;
-                envelopeAscending4 = (value & 0x80) != 0;
+                initialEnvelope4 = (value >> 4) & 0xf;
+                envelopeAscending4 = (value & 0x8) != 0;
                 envelopeSweep4 = value & 7;
                 break;
             case 0x12:
@@ -337,6 +348,12 @@ public class SoundBoard {
             case 0x13:
                 useLength4 = (value & 0x40) != 0;
                 enable4 = (value & 0x80) != 0;
+                if (enable4) {
+                    lfsr4 = 0x7fff;
+                    frequencyCounter4 = (frequencyDivisor4 == 0 ? 8 : (frequencyDivisor4 << 4)) << frequencyShift4;
+                    envelope4 = initialEnvelope4;
+                    envelopeCounter4 = 0;
+                }
                 break;
             case 0x14:
                 vinLeft = (value & 0x80) != 0;
@@ -375,20 +392,31 @@ public class SoundBoard {
         while (cycles > 0) {
             cycleCounter++;
             cycles --;
-            if (cycleCounter % (2048 - frequencyDivisor1) == 0) {
+            if (--frequencyCounter1 <= 0) {
+                frequencyCounter1 = 2048 - frequencyDivisor1;
                 waveCounter1 = (waveCounter1 + 1) & 7;
             }
-            if (cycleCounter % (2048 - frequencyDivisor2) == 0) {
+            if (--frequencyCounter2 <= 0) {
+                frequencyCounter2 = 2048 - frequencyDivisor2;
                 waveCounter2 = (waveCounter2 + 1) & 7;
             }
+            if (--frequencyCounter4 <= 0) {
+                frequencyCounter4 = (frequencyDivisor4 == 0 ? 8 : (frequencyDivisor4 << 4)) << frequencyShift4;
+                int xor = (lfsr4 & 1) ^ ((lfsr4 >> 1) & 1);
+                lfsr4 = (lfsr4 >> 1) | (xor << 14);
+                if (lowBitWidth4) {
+                    lfsr4 &= ~0x40;
+                    lfsr4 |= xor << 6;
+                }
+            }
             if ((cycleCounter & 0xfff) == 0) {
-                if (length1 > 0)
+                if (length1 > 0 && useLength1)
                     length1 --;
-                if (length2 > 0)
+                if (length2 > 0 && useLength2)
                     length2 --;
-                if (length3 > 0)
+                if (length3 > 0 && useLength3)
                     length3 --;
-                if (length4 > 0)
+                if (length4 > 0 && useLength4)
                     length4 --;
                 if ((cycleCounter & 0x1fff) == 0x1000 && sweepFrequency1 != 0) {
                     sweepCounter1++;
@@ -434,17 +462,17 @@ public class SoundBoard {
     }
 
     private int channel1() {
-        if (!enable1 || (useLength1 && length1 <= 0))
+        if (!enable1 || length1 <= 0 || envelope1 == 0)
             return 0;
-        int s = waveCounter1 > 3 ? 63 : 0;
-        return (s * initialEnvelope1) >> 4;
+        int s = ((DUTY[duty1] >>> waveCounter1) & 1) == 0 ? 0 : 63;
+        return (s * envelope1) >> 4;
     }
 
     private int channel2() {
-        if (!enable2 || (useLength2 && length2 <= 0))
+        if (!enable2 || length2 <= 0 || envelope2 == 0)
             return 0;
-        int s = waveCounter2 > 3 ? 63 : 0;
-        return (s * initialEnvelope2) >> 4;
+        int s = ((DUTY[duty2] >>> waveCounter2) & 1) == 0 ? 0 : 63;
+        return (s * envelope2) >> 4;
     }
 
     private int channel3() {
@@ -452,7 +480,9 @@ public class SoundBoard {
     }
 
     private int channel4() {
-        return 0;
+        if (!enable4 || length4 <= 0 || envelope4 == 0)
+            return 0;
+        return (((~lfsr4) & 1) * 63 * envelope4) >> 4;
     }
 
     private void writeSample() {
@@ -502,24 +532,6 @@ public class SoundBoard {
                 speaker.consume(leftBuffer, rightBuffer, bufferSize);
             }
         }
-    }
-
-    /**
-     * Called by a speaker to request bytes of sound to play
-     * Should always output the same number of bytes to left and right
-     * Either left or right may be null if the speaker only uses one channel
-     * If not null, left/right is expected to be at lest of length
-     * offset[Left/Right] + requested
-     * @param left Output bytes for left channel are written here
-     * @param right Output bytes for right channel are written here
-     * @param offsetLeft Offset into left
-     * @param offsetRight Offset into right
-     * @param requested Maximum number of bytes to generated per channel
-     * @return Actual number of bytes generated (per channel)
-     */
-    public int play(byte[] left, byte[] right, int offsetLeft, int offsetRight, int requested) {
-
-        return 0;
     }
 
 }

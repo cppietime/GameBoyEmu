@@ -165,8 +165,8 @@ public class Machine {
 
     public static void main(String[] args){
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
-//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
-        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
+        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb";
