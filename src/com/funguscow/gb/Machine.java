@@ -88,6 +88,9 @@ public class Machine {
                 case 5:
                 case 6:
                     mbc = 2; ram_size = 512; break;
+                case 0xF:
+                case 0x10:
+                case 0x11:
                 case 0x12:
                 case 0x13:
                     mbc = 3; break;
@@ -178,11 +181,13 @@ public class Machine {
     public static void main(String[] args){
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
         String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
+//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
+//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg_sound\\rom_singles\\01-registers.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb";
-        Machine machine = new Machine(new File(ROMPath), MachineMode.GAMEBOY_COLOR);
+        Machine machine = new Machine(new File(ROMPath), MachineMode.GAMEBOY);
         machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;

@@ -523,6 +523,8 @@ public class SoundBoard {
             right += c3;
         if ((mapRight & 4) != 0)
             right += c4;
+        left = (left * volumeLeft) >> 3;
+        right = (right * volumeRight) >> 3;
         leftBuffer[bufferPtr] = (byte)left;
         rightBuffer[bufferPtr] = (byte)right;
         bufferPtr++;
