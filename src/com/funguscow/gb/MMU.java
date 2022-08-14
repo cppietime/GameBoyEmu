@@ -52,6 +52,8 @@ public class MMU {
     private boolean mbc3_halt_rtc, mbc3_days_overflow;
     public boolean left_bios = false;
 
+    private boolean cgb;
+
     /**
      * Initialize according to power up seqeunce
      * @param machine Parent machine
@@ -60,13 +62,14 @@ public class MMU {
      * @param num_ram_banks Number of RAM banks
      * @param ram_size Size in bytes of RAM
      */
-    public MMU(Machine machine, int mbc_type, int num_rom_banks, int num_ram_banks, int ram_size){
+    public MMU(Machine machine, int mbc_type, int num_rom_banks, int num_ram_banks, int ram_size, boolean cgb){
         System.out.printf("Initialize MMU with MBC: %x, %d ROM and %d RAM\n", mbc_type, num_rom_banks, num_ram_banks);
         this.machine = machine;
         this.mbc_type = mbc_type;
         this.num_rom_banks = num_rom_banks;
         this.num_ram_banks = num_ram_banks;
         this.ram_size = ram_size;
+        this.cgb = cgb;
         rom = new byte[num_rom_banks * 0x4000];
         rom_bank = 1;
         ram_bank = 0;

@@ -430,7 +430,7 @@ public class SoundBoard {
                     sweepCounter1++;
                     if (sweepCounter1 == sweepFrequency1) {
                         sweepCounter1 = 0;
-                        int deltaFreq = (sweepAscending1 ? 1 : -1) * (frequencyDivisor1 >> sweepShift1);
+                        int deltaFreq = (sweepAscending1 ? -1 : 1) * (frequencyDivisor1 >> sweepShift1);
                         int newFreq = frequencyDivisor1 + deltaFreq;
                         if (newFreq > 0x7ff) {
                             enable1 = false;

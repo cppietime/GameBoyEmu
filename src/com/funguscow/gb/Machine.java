@@ -50,6 +50,7 @@ public class Machine {
 
     MachineMode mode;
     boolean doubleSpeed;
+    boolean usingColor;
 
     /**
      * Load a ROM file
@@ -60,7 +61,6 @@ public class Machine {
         keypad = new Keypad();
         keypad.machine = this;
         soundBoard = new SoundBoard(); // Not yet used
-        gpu = new GPU(this);
         this.mode = mode;
         byte[] header = new byte[0x150];
         try{
@@ -69,14 +69,16 @@ public class Machine {
             int read = fis.read(header, 0, 0x150);
             if(read < 0x150)
                 throw new Exception("ROM file too small to be valid!");
-            int cartridge_type = header[0x147];
+            int cartridge_type = header[0x147] & 0xff;
+            int colorMode = header[0x143] & 0xff;
+            usingColor = (mode.isCgb && (colorMode & 0x80) != 0 && (colorMode & 0x6) == 0);
             int mbc = 0;
             int rom_banks;
             int ram_size = 0;
             if(header[0x149] != 0){
                 ram_size = RAM_SIZES[header[0x149]];
             }
-            System.out.printf("Cartridge type = %02x, ramkey = %02x\n", cartridge_type, header[0x149]);
+            System.out.printf("Cartridge type = %02x, ramkey = %02x, Color? %s\n", cartridge_type, header[0x149], usingColor);
             switch(cartridge_type){
                 case 0:
                     ram_size = 0; break;
@@ -115,7 +117,8 @@ public class Machine {
                     rom_banks = 96; break;
             }
             // Create the memory component
-            mmu = new MMU(this, mbc, rom_banks, (ram_size + 0x1fff) >> 13, ram_size);
+            gpu = new GPU(this, usingColor);
+            mmu = new MMU(this, mbc, rom_banks, (ram_size + 0x1fff) >> 13, ram_size, usingColor);
             // Load this ROM file into it
             mmu.load_ROM(header, 0, 0x150);
             mmu.load_ROM(fis,  0x150, (rom_banks << 14) - 0x150);
@@ -180,15 +183,15 @@ public class Machine {
 
     public static void main(String[] args){
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
-        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
-//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
+//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
+        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg_sound\\rom_singles\\01-registers.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb";
-        Machine machine = new Machine(new File(ROMPath), MachineMode.GAMEBOY);
-        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
+        Machine machine = new Machine(new File(ROMPath), MachineMode.GAMEBOY_COLOR);
+//        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;
         machine.gpu.screen = screen;

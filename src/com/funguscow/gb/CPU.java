@@ -32,7 +32,7 @@ public class CPU {
         h = 0x01;
         l = 0x4d;
         sp = 0xfffe;
-        pc = 0x00; // Start with the opcode at 0x100, as this is what's loaded after the BIOS
+        pc = 0x100; // Start with the opcode at 0x100, as this is what's loaded after the BIOS
         this.debugger = debugger;
         this.logger = logger;
     }

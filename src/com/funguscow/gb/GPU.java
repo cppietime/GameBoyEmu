@@ -48,8 +48,11 @@ public class GPU {
 
     public GameboyScreen screen = null;
 
-    public GPU(Machine machine){
+    private boolean cgb;
+
+    public GPU(Machine machine, boolean cgb){
         this.machine = machine;
+        this.cgb = cgb;
         for(int i = 0; i < 40; i++){
             attribs[i] = new SpriteAttrib();
             spriteOrder[i] = i;
@@ -298,8 +301,8 @@ public class GPU {
         switch(address >> 12){
             case 0x8: // VRAM
             case 0x9:
-                if (mode == 3)
-                    return 0xff;
+//                if (mode == 3)
+//                    return 0xff;
                 return vram[address & 0x1fff] & 0xff;
             case 0xf:
                 switch((address >> 8) & 0xf) {
@@ -384,7 +387,7 @@ public class GPU {
         switch(address >> 12){
             case 0x8: // VRAM
             case 0x9:
-                if (mode != 3)
+//                if (mode != 3)
                     vram[address & 0x1fff] = (byte)value;
                 break;
             case 0xf: // OAM and registers
