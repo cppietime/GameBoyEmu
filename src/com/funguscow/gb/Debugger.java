@@ -6,9 +6,9 @@ import java.util.Set;
 
 public class Debugger {
 
-    private Scanner scanner;
-    private Set<Integer> breakpoints;
-    private Set<Integer> lookout;
+    private final Scanner scanner;
+    private final Set<Integer> breakpoints;
+    private final Set<Integer> lookout;
     private boolean paused;
     private int countdown;
 
@@ -27,7 +27,7 @@ public class Debugger {
             return;
         }
         paused = true;
-        cpu.dump_registers();
+        cpu.dumpRegisters();
         input_loop:
         while(paused){
             String line = scanner.nextLine();
@@ -55,11 +55,11 @@ public class Debugger {
                 {
                     int addr = Integer.parseInt(line.substring(1), 16);
                     int mem = cpu.mmu.read8(addr);
-                    System.out.println(String.format("%04x: %02x", addr, mem));
+                    System.out.printf("%04x: %02x\n", addr, mem);
                     break;
                 }
                 case 'r': // Registers
-                    cpu.dump_registers();
+                    cpu.dumpRegisters();
                     break;
                 case 'n': // Countdown
                     countdown = Integer.parseInt(line.substring(1), 16);

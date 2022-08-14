@@ -12,7 +12,7 @@ public class Timer {
     private int tma;
     private int tac;
     private boolean delayed;
-    private boolean pending_overflow;
+    private boolean pendingOverflow;
     private final Machine machine;
 
     private static final int[] DIV_BIT = {
@@ -32,23 +32,23 @@ public class Timer {
      */
     public void incr(int cycles){
         for (int i = 0; i < cycles; i++) {
-            if (pending_overflow) {
+            if (pendingOverflow) {
                 tima = tma;
-                machine.interrupts_fired |= 4;
-                pending_overflow = false;
+                machine.interruptsFired |= 4;
+                pendingOverflow = false;
             }
             divider = (divider + 1) & 0xffff;
-            update_edge();
+            updateEdge();
         }
     }
 
-    private void update_edge() {
+    private void updateEdge() {
         boolean bit = (divider & (1 << DIV_BIT[tac & 3])) != 0;
         bit &= (tac & 4) != 0;
         if (delayed && !bit) {
             tima += 1;
             if (tima > 0xff) {
-                pending_overflow = true;
+                pendingOverflow = true;
                 tima = 0;
             }
         }
@@ -74,7 +74,7 @@ public class Timer {
             case 0:
                 divider = 0; break;
             case 1:
-                pending_overflow = false;
+                pendingOverflow = false;
                 tima = value; break;
             case 2:
                 tma = value; break;
@@ -82,7 +82,7 @@ public class Timer {
                 value &= 7;
                 tac = value; break;
         }
-        update_edge();
+        updateEdge();
     }
 
 }

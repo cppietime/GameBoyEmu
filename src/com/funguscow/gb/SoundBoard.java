@@ -140,7 +140,6 @@ public class SoundBoard {
 
     // Global
     private int cycleCounter;
-    private int sampleCounter;
     private int bufferPtr;
 
     public SoundBoard(int bufferSize) {
@@ -501,7 +500,6 @@ public class SoundBoard {
     }
 
     private void writeSample() {
-        sampleCounter++;
         int c1 = channel1();
         int c2 = channel2();
         int c3 = channel3();

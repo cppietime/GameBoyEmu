@@ -18,12 +18,12 @@ public class Machine {
         GAMEBOY_POCKET(1, false, MMU.BIOS_DMG),
         GAMEBOY_COLOR(0x11, true, MMU.BIOS_DMG);
 
-        public final int af_initial;
+        public final int afInitial;
         public final boolean isCgb;
         public final byte[] BIOS;
 
-        MachineMode(int af_initial, boolean isCgb, byte[] BIOS){
-            this.af_initial = af_initial;
+        MachineMode(int afInitial, boolean isCgb, byte[] BIOS){
+            this.afInitial = afInitial;
             this.isCgb = isCgb;
             this.BIOS = BIOS;
         }
@@ -39,14 +39,14 @@ public class Machine {
     boolean halt;
     boolean stop;
 
-    int interrupts_enabled;
-    int interrupts_fired;
+    int interruptsEnabled;
+    int interruptsFired;
 
     /**
      * Speeds up emulation by the specified factor
      * Must never be 0!!
      */
-    int speedUp = 2;
+    int speedUp = 1;
 
     MachineMode mode;
     boolean doubleSpeed;
@@ -69,27 +69,27 @@ public class Machine {
             int read = fis.read(header, 0, 0x150);
             if(read < 0x150)
                 throw new Exception("ROM file too small to be valid!");
-            int cartridge_type = header[0x147] & 0xff;
+            int cartridgeType = header[0x147] & 0xff;
             int colorMode = header[0x143] & 0xff;
             usingColor = (mode.isCgb && (colorMode & 0x80) != 0 && (colorMode & 0x6) == 0);
             int mbc = 0;
-            int rom_banks;
-            int ram_size = 0;
+            int romBanks;
+            int ramSize = 0;
             if(header[0x149] != 0){
-                ram_size = RAM_SIZES[header[0x149]];
+                ramSize = RAM_SIZES[header[0x149]];
             }
-            System.out.printf("Cartridge type = %02x, ramkey = %02x, Color? %s\n", cartridge_type, header[0x149], usingColor);
-            switch(cartridge_type){
+            System.out.printf("Cartridge type = %02x, ramkey = %02x, Color? %s\n", cartridgeType, header[0x149], usingColor);
+            switch(cartridgeType){
                 case 0:
-                    ram_size = 0; break;
+                    ramSize = 0; break;
                 case 1:
-                    ram_size = 0;
+                    ramSize = 0;
                 case 2:
                 case 3:
                     mbc = 1; break;
                 case 5:
                 case 6:
-                    mbc = 2; ram_size = 512; break;
+                    mbc = 2; ramSize = 512; break;
                 case 0xF:
                 case 0x10:
                 case 0x11:
@@ -98,30 +98,30 @@ public class Machine {
                     mbc = 3; break;
                 case 0x19:
                 case 0x1C:
-                    ram_size = 0;
+                    ramSize = 0;
                 case 0x1A:
                 case 0x1B:
                 case 0x1D:
                 case 0x1E:
                     mbc = 5; break;
             }
-            rom_banks = header[0x148];
-            if(rom_banks <= 8)
-                rom_banks = 1 << (1 + rom_banks);
-            else switch(rom_banks){
+            romBanks = header[0x148];
+            if(romBanks <= 8)
+                romBanks = 1 << (1 + romBanks);
+            else switch(romBanks){
                 case 0x52:
-                    rom_banks = 72; break;
+                    romBanks = 72; break;
                 case 0x53:
-                    rom_banks = 80; break;
+                    romBanks = 80; break;
                 case 0x54:
-                    rom_banks = 96; break;
+                    romBanks = 96; break;
             }
             // Create the memory component
             gpu = new GPU(this, usingColor);
-            mmu = new MMU(this, mbc, rom_banks, (ram_size + 0x1fff) >> 13, ram_size, usingColor);
+            mmu = new MMU(this, mbc, romBanks, (ramSize + 0x1fff) >> 13, ramSize, usingColor);
             // Load this ROM file into it
-            mmu.load_ROM(header, 0, 0x150);
-            mmu.load_ROM(fis,  0x150, (rom_banks << 14) - 0x150);
+            mmu.loadRom(header, 0, 0x150);
+            mmu.loadRom(fis,  0x150, (romBanks << 14) - 0x150);
             fis.close();
         }catch(Exception e){
             e.printStackTrace();
@@ -138,7 +138,7 @@ public class Machine {
     public void loadRAM(File RAM) {
         try {
             InputStream is = new FileInputStream(RAM);
-            mmu.load_RAM(is, 0, mmu.external_ram.length);
+            mmu.loadRam(is, 0, mmu.externalRam.length);
             is.close();
         } catch (Exception e) {
             e.printStackTrace();
@@ -156,10 +156,10 @@ public class Machine {
                 e.printStackTrace();
             }
         }
-        int m_cycles = cpu.perform_op(this); // Execute an opcode after checking for interrupts
-        gpu.incr(m_cycles); // Increment the GPU's state
-        timer.incr(m_cycles); // Increment the timer's state
-        soundBoard.step(m_cycles, speedUp);
+        int mCycles = cpu.performOp(this); // Execute an opcode after checking for interrupts
+        gpu.incr(mCycles); // Increment the GPU's state
+        timer.incr(mCycles); // Increment the timer's state
+        soundBoard.step(mCycles, speedUp);
     }
 
     /**
@@ -167,14 +167,14 @@ public class Machine {
      * @param source Inputstream to file specifying test
      */
     public void test(InputStream source) {
-        mmu.left_bios = true;
+        mmu.leftBios = true;
         List<OpcodeTest> tests = OpcodeTest.parse(source);
         for (int i = 0; i < tests.size(); i++) {
             OpcodeTest test = tests.get(i);
             if (!test.test(this)) {
                 System.err.printf("Failed test #%d\n", i);
                 System.err.println(test.end);
-                cpu.dump_registers();
+                cpu.dumpRegisters();
                 break;
             }
             System.out.printf("Passed test #%d\n", i);
@@ -185,14 +185,14 @@ public class Machine {
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
-//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
+        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon crystal.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg_sound\\rom_singles\\01-registers.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg-acid2.gb";
-        String ROMPath = "D:\\Games\\GBA\\gbtest\\cgb-acid2.gbc";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\cgb-acid2.gbc";
         Machine machine = new Machine(new File(ROMPath), MachineMode.GAMEBOY_COLOR);
 //        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
         Screen screen = new Screen();

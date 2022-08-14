@@ -5,13 +5,13 @@ import java.util.Set;
 
 public class CPU {
 
-    int m, m_delta;
+    int m, mDelta;
 
     int a, b, c, d, e, h, l;
     int pc, sp;
     boolean zero, carry, half, subtract;
     boolean interrupts = false;
-    boolean halt_bug = false;
+    boolean haltBug = false;
 
     int lastInt = 0;
 
@@ -22,7 +22,7 @@ public class CPU {
 
     public CPU(Machine.MachineMode mode, MMU mmu, Debugger debugger, Logger logger){
         this.mmu = mmu;
-        a = mode.af_initial;
+        a = mode.afInitial;
         zero = half = carry = true;
         subtract = false;
         b = 0x00;
@@ -37,16 +37,16 @@ public class CPU {
         this.logger = logger;
     }
 
-    public int perform_op(Machine machine){
+    public int performOp(Machine machine){
         pc &= 0xffff;
         if (checkInterrupt(machine)) {
-            return m_delta;
+            return mDelta;
         }
         if(machine.halt || machine.stop)
-            m_delta = 1;
+            mDelta = 1;
         else {
-            if (pc == 0x100 && !mmu.left_bios) {
-                mmu.left_bios = true;
+            if (pc == 0x100 && !mmu.leftBios) {
+                mmu.leftBios = true;
             }
             int opcode = next8();
             if (logger != null) {
@@ -54,36 +54,36 @@ public class CPU {
             }
             if(debugger != null)
                 debugger.debug(pc, this, opcode);
-            m_delta = opcode(machine, opcode);
+            mDelta = opcode(machine, opcode);
         }
-        m += m_delta;
-        return m_delta;
+        m += mDelta;
+        return mDelta;
     }
 
     private boolean checkInterrupt(Machine machine) {
-        int interrupt_handles = machine.interrupts_enabled & machine.interrupts_fired & 0x1f;
-        if(interrupt_handles != 0){
+        int interruptHandles = machine.interruptsEnabled & machine.interruptsFired & 0x1f;
+        if(interruptHandles != 0){
             machine.halt = false;
             if(interrupts) {
-                if ((interrupt_handles & 1) != 0) { // V-blank
-                    machine.interrupts_fired &= ~1;
-                    int_rst(0x40);
+                if ((interruptHandles & 1) != 0) { // V-blank
+                    machine.interruptsFired &= ~1;
+                    intRst(0x40);
                     return true;
-                } else if ((interrupt_handles & 2) != 0) { // LCDC interrupt
-                    machine.interrupts_fired &= ~2;
-                    int_rst(0x48);
+                } else if ((interruptHandles & 2) != 0) { // LCDC interrupt
+                    machine.interruptsFired &= ~2;
+                    intRst(0x48);
                     return true;
-                } else if ((interrupt_handles & 4) != 0) { // Timer overflow
-                    machine.interrupts_fired &= ~4;
-                    int_rst(0x50);
+                } else if ((interruptHandles & 4) != 0) { // Timer overflow
+                    machine.interruptsFired &= ~4;
+                    intRst(0x50);
                     return true;
-                } else if ((interrupt_handles & 8) != 0) { // Serial transfer
-                    machine.interrupts_fired &= ~8;
-                    int_rst(0x58);
+                } else if ((interruptHandles & 8) != 0) { // Serial transfer
+                    machine.interruptsFired &= ~8;
+                    intRst(0x58);
                     return true;
-                } else if ((interrupt_handles & 16) != 0) { // P10-P13 Hi->Lo
-                    machine.interrupts_fired &= ~16;
-                    int_rst(0x60);
+                } else if ((interruptHandles & 16) != 0) { // P10-P13 Hi->Lo
+                    machine.interruptsFired &= ~16;
+                    intRst(0x60);
                     return true;
                 }
             }
@@ -91,7 +91,7 @@ public class CPU {
         return false;
     }
 
-    public void dump_registers(){
+    public void dumpRegisters(){
         System.out.printf("Time: %d\n", m);
         System.out.printf("b: %02x;\tc: %02x;\n", b, c);
         System.out.printf("d: %02x;\te: %02x;\n", d, e);
@@ -103,13 +103,13 @@ public class CPU {
         System.out.printf("Interrupts: %s;\n", interrupts);
     }
 
-    private void int_rst(int address){
+    private void intRst(int address){
 //        System.out.println("Handling interrupt at " + address);
         lastInt = address;
         sp -= 2;
         mmu.write16(sp, pc);
         pc = address;
-        m_delta = 5;
+        mDelta = 5;
         interrupts = false;
     }
 
@@ -139,20 +139,20 @@ public class CPU {
             case 0x6:
             case 0x7:
                 if (opcode != 0x76) {
-                    return ld8_r_r((opcode - 0x40) >> 3, opcode & 7);
+                    return ld8RR((opcode - 0x40) >> 3, opcode & 7);
                 }
                 break;
             case 0x8:
-                return add8_r_rn(7, (opcode - 0x80) & 7, opcode >= 0x88);
+                return add8RRn(7, (opcode - 0x80) & 7, opcode >= 0x88);
             case 0x9:
-                return sub8_r_r(7, (opcode - 0x90) & 7, opcode >= 0x98, true);
+                return sub8RR(7, (opcode - 0x90) & 7, opcode >= 0x98, true);
             case 0xA:
-                return and_xor8_r_rn(7, (opcode - 0xA0) & 7, opcode >= 0xA8);
+                return andXor8RRn(7, (opcode - 0xA0) & 7, opcode >= 0xA8);
             case 0xB:
                 if (opcode < 0xB8) {
-                    return or8_r_rn(7, opcode - 0xB0);
+                    return or8RRn(7, opcode - 0xB0);
                 } else {
-                    return sub8_r_r(7, opcode - 0xB8, false, false);
+                    return sub8RR(7, opcode - 0xB8, false, false);
                 }
         }
         switch(opcode) {
@@ -194,99 +194,99 @@ public class CPU {
 
             // 16 bit add
             case 0x09:
-                return add16_rp(10, 8);
+                return add16Rp(10, 8);
             case 0x19:
-                return add16_rp(10, 9);
+                return add16Rp(10, 9);
             case 0x29:
-                return add16_rp(10, 10);
+                return add16Rp(10, 10);
             case 0x39:
-                return add16_rp(10, 11);
+                return add16Rp(10, 11);
 
             // 16 bit increment/decrement
             case 0x03:
-                return inc_dec16(8, false);
+                return incDec16(8, false);
             case 0x13:
-                return inc_dec16(9, false);
+                return incDec16(9, false);
             case 0x23:
-                return inc_dec16(10, false);
+                return incDec16(10, false);
             case 0x33:
-                return inc_dec16(11, false);
+                return incDec16(11, false);
             case 0x0B:
-                return inc_dec16(8, true);
+                return incDec16(8, true);
             case 0x1B:
-                return inc_dec16(9, true);
+                return incDec16(9, true);
             case 0x2B:
-                return inc_dec16(10, true);
+                return incDec16(10, true);
             case 0x3B:
-                return inc_dec16(11, true);
+                return incDec16(11, true);
 
             // 8-bit immediate load
             case 0x06:
-                return ld8_imm(0);
+                return ld8Imm(0);
             case 0x0E:
-                return ld8_imm(1);
+                return ld8Imm(1);
             case 0x16:
-                return ld8_imm(2);
+                return ld8Imm(2);
             case 0x1E:
-                return ld8_imm(3);
+                return ld8Imm(3);
             case 0x26:
-                return ld8_imm(4);
+                return ld8Imm(4);
             case 0x2E:
-                return ld8_imm(5);
+                return ld8Imm(5);
             case 0x36:
-                return ld8_imm(6);
+                return ld8Imm(6);
             case 0x3E:
-                return ld8_imm(7);
+                return ld8Imm(7);
 
             // Indirect store A
             case 0x02:
-                return ld8_mem_r(8, 7);
+                return ld8MemR(8, 7);
             case 0x12:
-                return ld8_mem_r(9, 7);
+                return ld8MemR(9, 7);
             case 0x77:
-                return ld8_mem_r(10, 7);
+                return ld8MemR(10, 7);
             case 0xEA:
-                return ld8_mem_r(-2, 7);
+                return ld8MemR(-2, 7);
             case 0xE2:
-                return ld8_mem_r(1, 7);
+                return ld8MemR(1, 7);
 
             // Indirect load A
             case 0x0A:
-                return ld8_r_mem(7, 8);
+                return ld8RMem(7, 8);
             case 0x1A:
-                return ld8_r_mem(7, 9);
+                return ld8RMem(7, 9);
             case 0x7E:
-                return ld8_r_mem(7, 10);
+                return ld8RMem(7, 10);
             case 0xFA:
-                return ld8_r_mem(7, -2);
+                return ld8RMem(7, -2);
             case 0xF2:
-                return ld8_r_mem(7, 1);
+                return ld8RMem(7, 1);
 
             // LDD/I
             case 0x3A:
-                return ld_a_hl_di(true);
+                return ldAHlDi(true);
             case 0x32:
-                return ld_hl_a_di(true);
+                return ldHlADi(true);
             case 0x2A:
-                return ld_a_hl_di(false);
+                return ldAHlDi(false);
             case 0x22:
-                return ld_hl_a_di(false);
+                return ldHlADi(false);
 
             // Shadowed immediate memory
             case 0xE0:
-                return ld_shadow(true);
+                return ldShadow(true);
             case 0xF0:
-                return ld_shadow(false);
+                return ldShadow(false);
 
             // 16 bit immediates
             case 0x01:
-                return ld16_imm(8);
+                return ld16Imm(8);
             case 0x11:
-                return ld16_imm(9);
+                return ld16Imm(9);
             case 0x21:
-                return ld16_imm(10);
+                return ld16Imm(10);
             case 0x31:
-                return ld16_imm(11);
+                return ld16Imm(11);
 
             // Push/pop
             case 0xC1:
@@ -315,20 +315,20 @@ public class CPU {
                 // Currently no way to unset stop
                 return 1;
             case 0x20: // JR NZ,n
-                return jump_relative(!zero);
+                return jumpRelative(!zero);
             case 0x30: // JR NC,n
-                return jump_relative(!carry);
+                return jumpRelative(!carry);
             case 0xC0: // RET NZ
-                return return_conditional(!zero);
+                return returnConditional(!zero);
             case 0xD0: // RET NC
-                return return_conditional(!carry);
+                return returnConditional(!carry);
 
             case 0xC2: // JP NZ
-                return jump_immediate(!zero);
+                return jumpImmediate(!zero);
             case 0xD2: // JP NC
-                return jump_immediate(!carry);
+                return jumpImmediate(!carry);
             case 0xC3: // JP nn
-                return jump_immediate(true);
+                return jumpImmediate(true);
 
             //case 0xD3: REMOVED OPCODE OUT n,A
             //case 0xE3: REMOVED OPCODE EX (SP),HL
@@ -354,17 +354,17 @@ public class CPU {
 //                    else
 //                        machine.halt = true;
                     machine.halt = true;
-                    halt_bug = true;
+                    haltBug = true;
                 }
                 return 1;
             case 0xC6: // ADD A,n
-                return add8_r_rn(7, -1, false);
+                return add8RRn(7, -1, false);
             case 0xD6: // SUB A,n
-                return sub8_r_r(7, -1, false, true);
+                return sub8RR(7, -1, false, true);
             case 0xE6: // AND A,n
-                return and_xor8_r_rn(7, -1, false);
+                return andXor8RRn(7, -1, false);
             case 0xF6: // OR A,n
-                return or8_r_rn(7, -1);
+                return or8RRn(7, -1);
 
             /* 0xX7 */
             case 0x07: // RLCA
@@ -411,20 +411,20 @@ public class CPU {
 
             /* 0xX8 */
             case 0x08: // LD (nn),SP
-                return store_sp();
+                return storeSp();
             case 0x18: // JR n
-                return jump_relative(true);
+                return jumpRelative(true);
             case 0x28: // JR Z,n
-                return jump_relative(zero);
+                return jumpRelative(zero);
             case 0x38: // JR c,n
-                return jump_relative(carry);
+                return jumpRelative(carry);
             case 0xC8: // RET Z
-                return return_conditional(zero);
+                return returnConditional(zero);
             case 0xD8: // RET C
-                return return_conditional(carry);
+                return returnConditional(carry);
             case 0xE8: // ADD SP,n (byte)
             {
-                return add16_sp_imm();
+                return add16SpImm();
             }
             case 0xF8: // LDHL SP,n (byte)
             {
@@ -455,12 +455,12 @@ public class CPU {
                 return 2;
 
             case 0xCA: // JP Z nn
-                return jump_immediate(zero);
+                return jumpImmediate(zero);
             case 0xDA: // JP C nn
-                return jump_immediate(carry);
+                return jumpImmediate(carry);
 
             case 0xCB: // CB extra instruction
-                return extra_cb(next8());
+                return extraCb(next8());
             //case 0xDB: REMOVED INSTRUCTION IN A,n
             //case 0xEB: REMOVED INSTRUCTION EX DE,HL
             case 0xFB: // EI
@@ -483,13 +483,13 @@ public class CPU {
 
 
             case 0xCE: // ADC A,n
-                return add8_r_rn(7, -1, true);
+                return add8RRn(7, -1, true);
             case 0xDE: // SBC A,n
-                return sub8_r_r(7, -1, true, true);
+                return sub8RR(7, -1, true, true);
             case 0xEE: // XOR A,n
-                return and_xor8_r_rn(7, -1, true);
+                return andXor8RRn(7, -1, true);
             case 0xFE: // CMP A,n
-                return sub8_r_r(7, -1, false, false);
+                return sub8RR(7, -1, false, false);
 
             /* 0xXF */
             case 0x0F: // RRCA
@@ -530,10 +530,10 @@ public class CPU {
 
     private int next8() {
         int b = mmu.read8(pc);
-        if (!halt_bug) {
+        if (!haltBug) {
             pc += 1;
         }
-        halt_bug = false;
+        haltBug = false;
         return b;
     }
 
@@ -543,7 +543,7 @@ public class CPU {
         return (msb << 8) | lsb;
     }
 
-    private void set_register(int id, int value){
+    private void setRegister(int id, int value){
         switch(id){
             case 0:
                 b = value & 0xff; break;
@@ -577,29 +577,29 @@ public class CPU {
                 sp = value;
                 break;
             case 12: // F
-                set_flag_register(value);
+                setFlagRegister(value);
                 break;
             case 13: // AF
                 a = value >> 8;
-                set_flag_register(value & 0xff);
+                setFlagRegister(value & 0xff);
                 break;
             default:
                 throw new IllegalArgumentException(String.format("%d is an invalid register number", id));
         }
     }
 
-    public void set_flag_register(int value) {
+    public void setFlagRegister(int value) {
         zero = (value & 0x80) != 0;
         subtract = (value & 0x40) != 0;
         half = (value & 0x20) != 0;
         carry = (value & 0x10) != 0;
     }
 
-    public int get_flag_register() {
+    public int getFlagRegister() {
         return (zero ? 0x80 : 0) | (subtract ? 0x40 : 0) | (half ? 0x20 : 0) | (carry ? 0x10 : 0);
     }
 
-    public int get_register(int id){
+    public int getRegister(int id){
         switch(id){
             case -2: return next16(); // Immediate 2 bytes
             case -1: return next8(); // Immediate 1 byte
@@ -615,38 +615,38 @@ public class CPU {
             case 9: return (d << 8) | e;
             case 10: return (h << 8) | l;
             case 11: return sp;
-            case 12: return get_flag_register();//F
-            case 13: return (a << 8) | get_flag_register();// AF
+            case 12: return getFlagRegister();//F
+            case 13: return (a << 8) | getFlagRegister();// AF
         }
         throw new IllegalArgumentException(String.format("%d is an invalid register number", id));
     }
 
-    private int add8_r_rn(int r_dst, int r_src, boolean cyclic) {
-        int dst = get_register(r_dst);
-        int src = get_register(r_src);
-        int carry_bit = (cyclic && carry) ? 1 : 0;
-        int sum = dst + src + carry_bit;
+    private int add8RRn(int rDst, int rSrc, boolean cyclic) {
+        int dst = getRegister(rDst);
+        int src = getRegister(rSrc);
+        int carryBit = (cyclic && carry) ? 1 : 0;
+        int sum = dst + src + carryBit;
         subtract = false;
-        half = ((dst & 0xf) + (src & 0xf) + carry_bit) > 0xf;
+        half = ((dst & 0xf) + (src & 0xf) + carryBit) > 0xf;
         carry = sum > 0xff;
         sum &= 0xff;
         zero = sum == 0;
-        set_register(r_dst, sum);
-        return (r_src == 6 || r_src == -1) ? 2 : 1;
+        setRegister(rDst, sum);
+        return (rSrc == 6 || rSrc == -1) ? 2 : 1;
     }
 
-    private int add16_rp(int r_dst, int r_src) {
-        int dst = get_register(r_dst);
-        int src = get_register(r_src);
+    private int add16Rp(int rDst, int rSrc) {
+        int dst = getRegister(rDst);
+        int src = getRegister(rSrc);
         int sum = dst + src;
         subtract = false;
         carry = sum > 0xffff;
         half = (dst & 0xfff) + (src & 0xfff) > 0xfff;
-        set_register(r_dst, sum & 0xffff);
+        setRegister(rDst, sum & 0xffff);
         return 2;
     }
 
-    private int add16_sp_imm() {
+    private int add16SpImm() {
         zero = subtract = false;
         int imm = ((byte)next8());
         half = (sp & 0xf) + (imm & 0xf) > 0xf;
@@ -655,145 +655,145 @@ public class CPU {
         return 4;
     }
 
-    private int sub8_r_r(int r_dst, int r_src, boolean cyclic, boolean save) {
-        int dst = get_register(r_dst);
-        int src = get_register(r_src);
-        int carry_bit = (cyclic && carry) ? 1 : 0;
-        int sum = dst - src - carry_bit;
+    private int sub8RR(int rDst, int rSrc, boolean cyclic, boolean save) {
+        int dst = getRegister(rDst);
+        int src = getRegister(rSrc);
+        int carryBit = (cyclic && carry) ? 1 : 0;
+        int sum = dst - src - carryBit;
         subtract = true;
-        half = (dst & 0xf) < ((src & 0xf) + carry_bit);
+        half = (dst & 0xf) < ((src & 0xf) + carryBit);
         carry = sum < 0;
         sum &= 0xff;
         zero = sum == 0;
         if (save) {
-            set_register(r_dst, sum);
+            setRegister(rDst, sum);
         }
-        return (r_src == 6 || r_src == -1) ? 2 : 1;
+        return (rSrc == 6 || rSrc == -1) ? 2 : 1;
     }
 
-    private int and_xor8_r_rn(int r_dst, int r_src, boolean xor) {
-        int dst = get_register(r_dst);
-        int src = get_register(r_src);
+    private int andXor8RRn(int rDst, int rSrc, boolean xor) {
+        int dst = getRegister(rDst);
+        int src = getRegister(rSrc);
         int result = xor ? (dst ^ src) : (dst & src);
         subtract = carry = false;
         half = !xor;
         zero = result == 0;
-        set_register(r_dst, result);
-        return (r_src == 6 || r_src == -1) ? 2 : 1;
+        setRegister(rDst, result);
+        return (rSrc == 6 || rSrc == -1) ? 2 : 1;
     }
 
-    private int or8_r_rn(int r_dst, int r_src) {
-        int dst = get_register(r_dst);
-        int src = get_register(r_src);
+    private int or8RRn(int rDst, int rSrc) {
+        int dst = getRegister(rDst);
+        int src = getRegister(rSrc);
         int result = dst | src;
         subtract = carry = half = false;
         zero = result == 0;
-        set_register(r_dst, result);
-        return (r_src == 6 || r_src == -1) ? 2 : 1;
+        setRegister(rDst, result);
+        return (rSrc == 6 || rSrc == -1) ? 2 : 1;
     }
 
     private int inc8(int r) {
-        int val = (get_register(r) + 1) & 0xff;
+        int val = (getRegister(r) + 1) & 0xff;
         subtract = false;
         zero = val == 0;
         half = (val & 0xf) == 0;
-        set_register(r, val);
+        setRegister(r, val);
         return (r == 6) ? 3 : 1;
     }
 
     private int dec8(int r) {
-        int val = (get_register(r) - 1) & 0xff;
+        int val = (getRegister(r) - 1) & 0xff;
         subtract = true;
         zero = val == 0;
         half = (val & 0xf) == 0xf;
-        set_register(r, val);
+        setRegister(r, val);
         return (r == 6) ? 3 : 1;
     }
 
-    private int inc_dec16(int r, boolean dec) {
-        int val = get_register(r);
+    private int incDec16(int r, boolean dec) {
+        int val = getRegister(r);
         val += dec ? -1 : 1;
-        set_register(r, val & 0xffff);
+        setRegister(r, val & 0xffff);
         return 2;
     }
 
-    private int ld8_imm(int r) {
+    private int ld8Imm(int r) {
         int imm = next8();
-        set_register(r, imm);
+        setRegister(r, imm);
         return r == 6 ? 3 : 2;
     }
 
-    private int ld8_r_r(int r_dst, int r_src) {
-        int src = get_register(r_src);
-        set_register(r_dst, src);
-        return (r_dst == 6 || r_src == 6) ? 2 : 1;
+    private int ld8RR(int rDst, int rSrc) {
+        int src = getRegister(rSrc);
+        setRegister(rDst, src);
+        return (rDst == 6 || rSrc == 6) ? 2 : 1;
     }
 
-    private int ld8_r_mem(int r_dst, int r_src) {
-        int addr = get_register(r_src);
-        if (r_src == 1) { // C
+    private int ld8RMem(int rDst, int rSrc) {
+        int addr = getRegister(rSrc);
+        if (rSrc == 1) { // C
             addr += 0xff00;
         }
         int src = mmu.read8(addr);
-        set_register(r_dst, src);
-        return r_src == -2 ? 4 : 2;
+        setRegister(rDst, src);
+        return rSrc == -2 ? 4 : 2;
     }
 
-    private int ld8_mem_r(int r_dst, int r_src) {
-        int addr = get_register(r_dst);
-        if (r_dst == 1) { // C
+    private int ld8MemR(int rDst, int rSrc) {
+        int addr = getRegister(rDst);
+        if (rDst == 1) { // C
             addr += 0xff00;
         }
-        int src = get_register(r_src);
+        int src = getRegister(rSrc);
         mmu.write8(addr, src);
-        return r_dst == -2 ? 4 : 2;
+        return rDst == -2 ? 4 : 2;
     }
 
-    private int ld_a_hl_di(boolean dec) {
-        int addr = get_register(10);
+    private int ldAHlDi(boolean dec) {
+        int addr = getRegister(10);
         int src = mmu.read8(addr);
         addr += dec ? -1 : 1;
-        set_register(10, addr);
-        set_register(7, src);
+        setRegister(10, addr);
+        setRegister(7, src);
         return 2;
     }
 
-    private int ld_hl_a_di(boolean dec) {
-        int addr = get_register(10);
-        int src = get_register(7);
+    private int ldHlADi(boolean dec) {
+        int addr = getRegister(10);
+        int src = getRegister(7);
         mmu.write8(addr, src);
         addr += dec ? -1 : 1;
-        set_register(10, addr);
+        setRegister(10, addr);
         return 2;
     }
 
-    private int ld_shadow(boolean store) {
+    private int ldShadow(boolean store) {
         int addr = next8() + 0xff00;
         if (store) {
-            int src = get_register(7);
+            int src = getRegister(7);
             mmu.write8(addr, src);
         }
         else {
             int src = mmu.read8(addr);
-            set_register(7, src);
+            setRegister(7, src);
         }
         return 3;
     }
 
-    private int ld16_imm(int r) {
+    private int ld16Imm(int r) {
         int src = next16();
-        set_register(r, src);
+        setRegister(r, src);
         return 3;
     }
 
-    private int store_sp() {
+    private int storeSp() {
         int addr = next16();
         mmu.write16(addr, sp);
         return 5;
     }
 
     private int push16(int r) {
-        int src = get_register(r);
+        int src = getRegister(r);
         sp -= 2;
         mmu.write16(sp, src);
         return 4;
@@ -802,11 +802,11 @@ public class CPU {
     private int pop16(int r) {
         int src = mmu.read16(sp);
         sp += 2;
-        set_register(r, src);
+        setRegister(r, src);
         return 3;
     }
 
-    private int jump_relative(boolean condition) {
+    private int jumpRelative(boolean condition) {
         byte offset = (byte)next8();
         if (condition) {
             pc += offset;
@@ -815,7 +815,7 @@ public class CPU {
         return 2;
     }
 
-    private int jump_immediate(boolean condition) {
+    private int jumpImmediate(boolean condition) {
         int target = next16();
         if (condition) {
             pc = target;
@@ -835,7 +835,7 @@ public class CPU {
         return 3;
     }
 
-    private int return_conditional(boolean condition) {
+    private int returnConditional(boolean condition) {
         if (condition) {
             pc = mmu.read16(sp);
             sp += 2;
@@ -937,34 +937,34 @@ public class CPU {
         return reg & ~(1 << bit);
     }
 
-    private int extra_cb(int opcode){
+    private int extraCb(int opcode){
         int register = opcode & 0x7;
         int operation = opcode & 0xf8;
-        int long_cycles = 4;
+        int longCycles = 4;
         switch(operation){
             case 0x00: //RLC
-                set_register(register, rlc(get_register(register)));
+                setRegister(register, rlc(getRegister(register)));
                 break;
             case 0x08: //RRC
-                set_register(register, rrc(get_register(register)));
+                setRegister(register, rrc(getRegister(register)));
                 break;
             case 0x10: //RL
-                set_register(register, rotl(get_register(register)));
+                setRegister(register, rotl(getRegister(register)));
                 break;
             case 0x18: //RL
-                set_register(register, rotr(get_register(register)));
+                setRegister(register, rotr(getRegister(register)));
                 break;
             case 0x20: //SHL
-                set_register(register, shl(get_register(register)));
+                setRegister(register, shl(getRegister(register)));
                 break;
             case 0x28: //SHAR
-                set_register(register, shar(get_register(register)));
+                setRegister(register, shar(getRegister(register)));
                 break;
             case 0x30: //SWAP
-                set_register(register, swap(get_register(register)));
+                setRegister(register, swap(getRegister(register)));
                 break;
             case 0x38: //SHR
-                set_register(register, shr(get_register(register)));
+                setRegister(register, shr(getRegister(register)));
                 break;
             case 0x40:
             case 0x48:
@@ -974,8 +974,8 @@ public class CPU {
             case 0x68:
             case 0x70:
             case 0x78:
-                long_cycles = 3;
-                bit(get_register(register), (operation - 0x40) >> 3);
+                longCycles = 3;
+                bit(getRegister(register), (operation - 0x40) >> 3);
                 break;
             case 0x80:
             case 0x88:
@@ -985,7 +985,7 @@ public class CPU {
             case 0xA8:
             case 0xB0:
             case 0xB8:
-                set_register(register, reset(get_register(register), (operation - 0x80) >> 3));
+                setRegister(register, reset(getRegister(register), (operation - 0x80) >> 3));
                 break;
             case 0xC0:
             case 0xC8:
@@ -995,10 +995,10 @@ public class CPU {
             case 0xE8:
             case 0xF0:
             case 0xF8:
-                set_register(register, set(get_register(register), (operation - 0xC0) >> 3));
+                setRegister(register, set(getRegister(register), (operation - 0xC0) >> 3));
                 break;
         }
-        return (register == 6) ? long_cycles : 2;
+        return (register == 6) ? longCycles : 2;
     }
 
 }

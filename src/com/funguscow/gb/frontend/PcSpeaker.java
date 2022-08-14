@@ -15,9 +15,10 @@ public class PcSpeaker implements SoundBoard.Speaker {
     private int bufferPtr;
 
     // Can be constructor-supplied later
-    private int channels = 2;
+    private final int channels;
 
-    public PcSpeaker(int bufferSize) {
+    public PcSpeaker(int bufferSize, int channels) {
+        this.channels = channels;
         this.bufferSize = bufferSize;
         buffer = new byte[bufferSize * channels];
         AudioFormat audioFormat = new AudioFormat(AudioFormat.Encoding.PCM_UNSIGNED, 44100, 8, channels, channels, 44100, false);
@@ -33,7 +34,7 @@ public class PcSpeaker implements SoundBoard.Speaker {
     }
 
     public PcSpeaker() {
-        this(BUFFER_SIZE);
+        this(BUFFER_SIZE, 2);
     }
 
     public SoundBoard.SpeakerFormat getFormat() {

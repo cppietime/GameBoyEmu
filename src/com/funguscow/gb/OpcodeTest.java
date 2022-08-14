@@ -25,9 +25,9 @@ public class OpcodeTest {
             l = parseHex(scanner);
             pc = parseHex(scanner);
             sp = parseHex(scanner);
-            int num_ram = scanner.nextInt();
+            int numRam = scanner.nextInt();
             ram = new HashMap<>();
-            for (int i = 0; i < num_ram; i++) {
+            for (int i = 0; i < numRam; i++) {
                 int address = parseHex(scanner);
                 int value = parseHex(scanner);
                 ram.put(address, value);
@@ -58,13 +58,13 @@ public class OpcodeTest {
                 machine.gpu.vram[address - 0x8000] = (byte)value;
             }
             else if (address < 0xC000) { // External ram
-                mmu.external_ram[address - 0xA000] = (byte)value;
+                mmu.externalRam[address - 0xA000] = (byte)value;
             }
             else if (address < 0xFE00) { // WRAM
-                mmu.internal_ram[(address - 0xC000) & 0x1fff] = (byte)value;
+                mmu.internalRam[(address - 0xC000) & 0x1fff] = (byte)value;
             }
             else { // High RAM
-                mmu.zero_page[address - 0xFF80] = (byte)value;
+                mmu.zeroPage[address - 0xFF80] = (byte)value;
             }
         }
         cpu.a = begin.a;
@@ -74,12 +74,12 @@ public class OpcodeTest {
         cpu.e = begin.e;
         cpu.h = begin.h;
         cpu.l = begin.l;
-        cpu.set_flag_register(begin.f);
+        cpu.setFlagRegister(begin.f);
         cpu.pc = begin.pc;
         cpu.sp = begin.sp;
 
         // Run
-        int actual_cycles = cpu.perform_op(machine);
+        int actualCycles = cpu.performOp(machine);
 
         // Compare
         for (Map.Entry<Integer, Integer> entry : end.ram.entrySet()) {
@@ -103,7 +103,7 @@ public class OpcodeTest {
         if (cpu.e != end.e) {
             return false;
         }
-        if (cpu.get_flag_register() != end.f) {
+        if (cpu.getFlagRegister() != end.f) {
             return false;
         }
         if (cpu.h != end.h) {
@@ -118,7 +118,7 @@ public class OpcodeTest {
         if (cpu.sp != end.sp) {
             return false;
         }
-        return actual_cycles == cycles;
+        return actualCycles == cycles;
     }
 
     public OpcodeTest(Scanner scanner) {
