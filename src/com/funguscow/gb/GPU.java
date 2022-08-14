@@ -244,7 +244,7 @@ public class GPU {
                             machine.interrupts_fired |= 0x2;
                         mode = 1;
                         long passed = System.currentTimeMillis() - lastVBlank;
-                        long targetWait = MS_BETWEEN_VBLANKS - passed;
+                        long targetWait = MS_BETWEEN_VBLANKS / machine.speedUp - passed;
                         if (targetWait > WAIT_THRESHOLD) {
                             try {
 //                                Thread.sleep(targetWait);
@@ -298,10 +298,14 @@ public class GPU {
         switch(address >> 12){
             case 0x8: // VRAM
             case 0x9:
+                if (mode == 3)
+                    return 0xff;
                 return vram[address & 0x1fff] & 0xff;
             case 0xf:
                 switch((address >> 8) & 0xf) {
                     case 0xe: { // OAM
+                        if (mode > 1)
+                            return 0xff;
                         int offset = address & 0xff;
                         if (offset >= 0xa0)
                             return 0;
@@ -380,7 +384,8 @@ public class GPU {
         switch(address >> 12){
             case 0x8: // VRAM
             case 0x9:
-                vram[address & 0x1fff] = (byte)value;
+                if (mode != 3)
+                    vram[address & 0x1fff] = (byte)value;
                 break;
             case 0xf: // OAM and registers
                 switch((address >> 8) & 0xf) {

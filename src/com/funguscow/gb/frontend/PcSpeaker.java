@@ -6,7 +6,7 @@ import javax.sound.sampled.*;
 
 public class PcSpeaker implements SoundBoard.Speaker {
 
-    private static final int BUFFER_SIZE = 4096;
+    private static final int BUFFER_SIZE = 2048;
 
     private AudioFormat audioFormat;
     private SoundBoard.SpeakerFormat speakerFormat;

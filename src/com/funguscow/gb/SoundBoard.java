@@ -99,10 +99,12 @@ public class SoundBoard {
     private int volume3; // 5-6
     // 0xFF1D - NR33, 0xFF1E - NR34
     private int frequencyDivisor3; // 0xFF1D, 0xFF1E[0-2], WO
+    private int frequencyCounter3; // Internal
     private boolean useLength3; // 6
     private boolean enable3; // 7, WO
     // 0xFF30 - 0xFF3F
     private final byte[] waveform = new byte[16];
+    private int wavePtr; // Internal
 
     // Channel 4
     // 0xFF20 - NR41
@@ -182,22 +184,19 @@ public class SoundBoard {
                 value = 0x3f | (duty2 << 6);
                 break;
             case 0x7:
-                value = (initialEnvelope2 << 4) | (envelopeAscending2 ? 0x8 : 0) | envelopeSweep1;
+                value = (initialEnvelope2 << 4) | (envelopeAscending2 ? 0x8 : 0) | envelopeSweep2;
                 break;
             case 0x9:
                 value = 0xbf | (useLength2 ? 0x40 : 0);
                 break;
             case 0xA:
-                value = 0x3f | (on3 ? 0x80 : 0);
+                value = 0x7f | (on3 ? 0x80 : 0);
                 break;
             case 0xC:
                 value = 0x9f | (volume3 << 5);
                 break;
             case 0xE:
                 value = 0xbf | (useLength3 ? 0x40 : 0);
-                break;
-            case 0x10:
-                value = 0xC0 | length4;
                 break;
             case 0x11:
                 value |= initialEnvelope4 << 4;
@@ -328,9 +327,13 @@ public class SoundBoard {
                 break;
             case 0xE:
                 frequencyDivisor3 &= 0xff;
-                frequencyDivisor3 |= (value & 3) << 8;
+                frequencyDivisor3 |= (value & 7) << 8;
                 useLength3 = (value & 0x40) != 0;
                 enable3 = (value & 0x80) != 0;
+                if (enable3) {
+                    frequencyCounter3 = 1024 - frequencyDivisor3 / 2;
+                    wavePtr = 0;
+                }
                 break;
             case 0x10:
                 length4 = 64 - (value & 63);
@@ -342,7 +345,7 @@ public class SoundBoard {
                 break;
             case 0x12:
                 frequencyShift4 = (value >> 4) & 0xf;
-                lowBitWidth4 = (value & 0x80) != 0;
+                lowBitWidth4 = (value & 0x8) != 0;
                 frequencyDivisor4 = value & 7;
                 break;
             case 0x13:
@@ -399,6 +402,11 @@ public class SoundBoard {
             if (--frequencyCounter2 <= 0) {
                 frequencyCounter2 = 2048 - frequencyDivisor2;
                 waveCounter2 = (waveCounter2 + 1) & 7;
+            }
+            frequencyCounter3 -= 2;
+            if (frequencyCounter3 <= 0) {
+                frequencyCounter3 = 2048 - frequencyDivisor3;
+                wavePtr = (wavePtr + 1) & 31;
             }
             if (--frequencyCounter4 <= 0) {
                 frequencyCounter4 = (frequencyDivisor4 == 0 ? 8 : (frequencyDivisor4 << 4)) << frequencyShift4;
@@ -476,7 +484,14 @@ public class SoundBoard {
     }
 
     private int channel3() {
-        return 0;
+        if (!enable3 || !on3 || volume3 == 0)
+            return 0;
+        int b = waveform[wavePtr >> 1];
+        if ((wavePtr & 1) == 0) {
+            b >>= 4;
+        }
+        b &= 0xf;
+        return b << (3 - volume3);
     }
 
     private int channel4() {
@@ -517,15 +532,15 @@ public class SoundBoard {
      * Called periodically from the machine to play sound
      * @param cycles Number of m-cycles that have passed
      */
-    public void step(int cycles) {
+    public void step(int cycles, int timeDivisor) {
         if (speaker == null) {
             return;
         }
         incrementTimer(cycles);
         latentCycles += (long) cycles * format.sampleRate;
-        int numSamples = (int)(latentCycles >> 20);
+        int numSamples = (int)(latentCycles >> 20) / timeDivisor;
         for (int i = 0; i < numSamples; i++) {
-            latentCycles -= (long) 1 << 20;
+            latentCycles -= (long) timeDivisor << 20;
             writeSample();
             if (bufferPtr == bufferSize) {
                 bufferPtr = 0;

@@ -45,7 +45,7 @@ public class CPU {
         if(machine.halt || machine.stop)
             m_delta = 1;
         else {
-            if (pc >= 0x100 && !mmu.left_bios) {
+            if (pc == 0x100 && !mmu.left_bios) {
                 mmu.left_bios = true;
             }
             int opcode = next8();

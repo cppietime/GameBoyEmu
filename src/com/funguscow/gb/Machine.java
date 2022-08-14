@@ -14,14 +14,18 @@ public class Machine {
     public static final int[] RAM_SIZES = {0, 1 << 11, 1 << 13, 1 << 15, 1 << 17};
 
     public enum MachineMode{
-        GAMEBOY(1),
-        GAMEBOY_POCKET(1),
-        GAMEBOY_COLOR(1);
+        GAMEBOY(1, false, MMU.BIOS_DMG),
+        GAMEBOY_POCKET(1, false, MMU.BIOS_DMG),
+        GAMEBOY_COLOR(0x11, true, MMU.BIOS_DMG);
 
-        public int af_initial;
+        public final int af_initial;
+        public final boolean isCgb;
+        public final byte[] BIOS;
 
-        MachineMode(int af_initial){
+        MachineMode(int af_initial, boolean isCgb, byte[] BIOS){
             this.af_initial = af_initial;
+            this.isCgb = isCgb;
+            this.BIOS = BIOS;
         }
     }
 
@@ -38,18 +42,26 @@ public class Machine {
     int interrupts_enabled;
     int interrupts_fired;
 
+    /**
+     * Speeds up emulation by the specified factor
+     * Must never be 0!!
+     */
+    int speedUp = 1;
+
     MachineMode mode;
+    boolean doubleSpeed;
 
     /**
      * Load a ROM file
      * @param ROM File containing ROM
      */
-    public Machine(File ROM){
+    public Machine(File ROM, MachineMode mode){
         timer = new Timer(this);
         keypad = new Keypad();
         keypad.machine = this;
         soundBoard = new SoundBoard(); // Not yet used
         gpu = new GPU(this);
+        this.mode = mode;
         byte[] header = new byte[0x150];
         try{
             FileInputStream fis = new FileInputStream(ROM);
@@ -110,7 +122,7 @@ public class Machine {
             System.exit(3);
         }
         Logger logger = null;//new Logger("log.txt");
-        cpu = new CPU(MachineMode.GAMEBOY, mmu, null, logger);
+        cpu = new CPU(mode, mmu, null, logger);
     }
 
     /**
@@ -141,7 +153,7 @@ public class Machine {
         int m_cycles = cpu.perform_op(this); // Execute an opcode after checking for interrupts
         gpu.incr(m_cycles); // Increment the GPU's state
         timer.incr(m_cycles); // Increment the timer's state
-        soundBoard.step(m_cycles);
+        soundBoard.step(m_cycles, speedUp);
     }
 
     /**
@@ -168,10 +180,10 @@ public class Machine {
         String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
-//        String ROMPath = "D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg_sound\\rom_singles\\01-registers.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb";
-        Machine machine = new Machine(new File(ROMPath));
-//        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
+        Machine machine = new Machine(new File(ROMPath), MachineMode.GAMEBOY_COLOR);
+        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
         Screen screen = new Screen();
         screen.keypad = machine.keypad;
         machine.gpu.screen = screen;
