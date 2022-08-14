@@ -191,6 +191,7 @@ public class Machine {
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg_sound\\rom_singles\\01-registers.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg-acid2.gb";
         String ROMPath = "D:\\Games\\GBA\\gbtest\\cgb-acid2.gbc";
         Machine machine = new Machine(new File(ROMPath), MachineMode.GAMEBOY_COLOR);
 //        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));

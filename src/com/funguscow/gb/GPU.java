@@ -60,6 +60,7 @@ public class GPU {
 
     private boolean cgb;
     private int vramBank; // CGB only
+    private boolean oamPosOrder;
 
     public GPU(Machine machine, boolean cgb){
         this.machine = machine;
@@ -107,7 +108,7 @@ public class GPU {
                 int mty = ty >> 3;
                 mty &= 31;
                 ty &= 7;
-                int row_base = tiledata_base + ty * 2;
+//                int row_base = tiledata_base + ty * 2;
                 for (int tx = 0; tx < 21; tx++) {
                     int mtx = ((tx << 3) + scroll_x) >> 3;
                     mtx &= 31;
@@ -128,13 +129,20 @@ public class GPU {
                     }
 
                     if (bg_tile_high) tile_num = (byte)tile_num;
+                    int rowY = ty;
+                    if (flipY)
+                        rowY = 7 - rowY;
+                    int row_base = tiledata_base + rowY * 2;
                     int tileAddress = row_base + tile_num * 16;
                     if (highVramBank)
                         tileAddress += 0x2000;
                     int row0 = vram[tileAddress];
                     int row1 = vram[tileAddress + 1];
                     for (int x = 7; x >= 0; x--) {
-                        int screen_x = x - (scroll_x & 7) + tx * 8;
+                        int screen_x = x;
+                        if (flipX)
+                            screen_x = 7 - screen_x;
+                        screen_x = screen_x - (scroll_x & 7) + tx * 8;
                         if (screen_x < 0) {
                             break;
                         }
@@ -157,7 +165,11 @@ public class GPU {
                             color = (shade << 16) | (shade << 8) | shade;
                         }
                         screen.putPixel(screen_x, line, color);
-                        z_buf[line * 160 + screen_x] = palid;
+                        if (bgPriority && palid != 0) {
+                            z_buf[line * 160 + screen_x] = -1;
+                        } else {
+                            z_buf[line * 160 + screen_x] = palid;
+                        }
                     }
                 }
             }
@@ -188,14 +200,20 @@ public class GPU {
                         }
 
                         if(bg_tile_high) tile_num = (byte)tile_num;
-                        int row_base = tiledata_base + ty * 2;
+                        int rowY = ty;
+                        if (flipY)
+                            rowY = 7 - rowY;
+                        int row_base = tiledata_base + rowY * 2;
                         if (highVramBank)
                             row_base += 0x2000;
                         int row0 = vram[tile_num * 16 + row_base];
                         int row1 = vram[tile_num * 16 + row_base + 1];
 
                         for(int x = 7; x >= 0; x--){
-                            int screen_x = x - 7 + tx * 8 + window_x;
+                            int screen_x = x;
+                            if (flipX)
+                                screen_x = 7 - screen_x;
+                            screen_x = screen_x - 7 + tx * 8 + window_x;
                             int palid = ((row1 & 1) << 1) | (row0 & 1);
                             row1 >>= 1;
                             row0 >>= 1;
@@ -215,7 +233,11 @@ public class GPU {
                                 color = (shade << 16) | (shade << 8) | shade;
                             }
                             screen.putPixel(screen_x, line, color);
-                            z_buf[line * 160 + screen_x] |= palid;
+                            if (bgPriority && palid != 0) {
+                                z_buf[line * 160 + screen_x] = -1;
+                            } else {
+                                z_buf[line * 160 + screen_x] |= palid;
+                            }
                         }
                     }
                 }
@@ -225,7 +247,11 @@ public class GPU {
         if (sprites_on) {
             Arrays.fill(occluded, false);
             int height = tall_sprites ? 16 : 8;
-            Arrays.sort(spriteOrder, Comparator.comparingInt(a -> attribs[a].x));
+            if (cgb && !oamPosOrder) {
+                Arrays.sort(spriteOrder);
+            } else {
+                Arrays.sort(spriteOrder, Comparator.comparingInt(a -> attribs[a].x));
+            }
             int spritesThisLine = 0;
             for (int i = 0; i < spriteOrder.length && spritesThisLine < 10; i++) {
                 SpriteAttrib sprite = attribs[spriteOrder[i]];
@@ -263,9 +289,18 @@ public class GPU {
                         continue;
                     }
                     int pixel = ((row0 >> (7 - x)) & 1) | (((row1 >> (7 - x)) & 1) << 1);
-                    boolean draw = !sprite.priority;
-                    draw |= z_buf[line * 160 + screenX] == 0;
-                    draw |= (!bg_on && cgb);
+                    int old_z = z_buf[line * 160 + screenX];
+                    boolean draw = false;
+                    if (cgb && !bg_on) { // Master priority is overwritten
+                        draw = true;
+                    } else if (cgb && old_z == -1) { // BG-to-OAM priority takes precedence(?)
+                        draw = false;
+                    } else if (!sprite.priority || old_z == 0) {
+                        draw = true;
+                    }
+//                    draw = !sprite.priority;
+//                    draw |= z_buf[line * 160 + screenX] == 0;
+//                    draw |= (!bg_on && cgb);
                     draw &= (pixel != 0);
                     if (draw) {
                         int color;
@@ -487,6 +522,10 @@ public class GPU {
                             if ((obPalIndex & 1) == 0)
                                 return obPalColor[obPalIndex >> 1] & 0xff;
                             return obPalColor[obPalIndex >> 1] >> 8;
+                        case 0xC:
+                            if (cgb)
+                                return 0xfe | (oamPosOrder ? 1 : 0);
+                            return 0xff;
                     }
                 }
         }
@@ -633,6 +672,10 @@ public class GPU {
                                     if (obPalIncrement)
                                         obPalIndex = (obPalIndex + 1) & 63;
                                 }
+                                case 0xC:
+                                    if (cgb)
+                                        oamPosOrder = (value & 1) != 0;
+                                    break;
                             }
                         }
                 }
