@@ -251,7 +251,7 @@ public class MMU {
                     return machine.gpu.read(address);
                 }
                 else if(address < 0xff00) return 0; // Unusable
-                else if(address < 0xff4c){
+                else if(address < 0xff50){
                     if((address & ~3) == 0xff04)
                         return machine.timer.read(address & 3);
                     else if(address >= 0xff40 && address != 0xff46)
@@ -267,6 +267,12 @@ public class MMU {
                         }
                     }
                     return 0xff;
+                }
+                else if (address < 0xff68) {
+                    return 0xff;
+                }
+                else if (address < 0xff70 && cgb) { // 0xFF68 - 0xFF6F, CGB palette info
+                    return machine.gpu.read(address);
                 }
                 else if (address == 0xff70 && cgb) {
                     return wramBank | 0xf8;
@@ -446,7 +452,7 @@ public class MMU {
                     machine.gpu.write(address, value);
                 }
                 else if(address < 0xff00); // Unusable
-                else if(address < 0xff4c){
+                else if(address < 0xff50){
                     if((address & ~3) == 0xff04)
                         machine.timer.write(address & 3, value);
                     else if(address >= 0xff40 && address != 0xff46)
@@ -470,6 +476,10 @@ public class MMU {
                         System.out.println(machine.cpu.calledOps.stream().sorted().map(Integer::toHexString).collect(Collectors.joining(", ")));
                         System.out.println("Line on leave bios is " + machine.gpu.line);
                     }
+                }
+                else if (address < 0xff68); // Unused
+                else if (address < 0xff70 && cgb) { // 0xFF68 - 0xFF6F, CGB stuff
+                    machine.gpu.write(address, value);
                 }
                 else if (address == 0xff70 && cgb) {
                     wramBank = value & 7;

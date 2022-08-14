@@ -23,6 +23,10 @@ public class GPU {
     private static class SpriteAttrib{
         public int x, y, pattern;
         public boolean priority, y_flip, x_flip, use_pal1;
+
+        // CGB only
+        public boolean useVramBank1;
+        public int cgbPalette;
     }
 
     int line; // Current line being scanned
@@ -36,6 +40,12 @@ public class GPU {
     private int lyc;
     private int scroll_x, scroll_y, window_x, window_y;
     private final int[] bg_pal = new int[4], ob0_pal = new int[4], ob1_pal = new int[4];
+
+    // CGB Only
+    private final int[] bgPalColor = new int[4 * 8], obPalColor = new int[4 * 8];
+    private int bgPalIndex, obPalIndex;
+    private boolean bgPalIncrement, obPalIncrement;
+    // End CGB Only
 
     private final SpriteAttrib[] attribs = new SpriteAttrib[40];
     private final Integer[] spriteOrder = new Integer[40];
@@ -88,7 +98,7 @@ public class GPU {
             return;
         }
         Arrays.fill(z_buf, 0);
-        if(bg_on){
+        if(bg_on || cgb){ // Bit 0 of LCDC is different in CGB
             int tiledata_base = bg_tile_high ? 0x1000 : 0x0000;
             // Draw Background
             {
@@ -101,10 +111,28 @@ public class GPU {
                 for (int tx = 0; tx < 21; tx++) {
                     int mtx = ((tx << 3) + scroll_x) >> 3;
                     mtx &= 31;
+
+                    // Index into tile map
                     int tile_num = vram[tilemap_base + mty * 32 + mtx] & 0xff;
+
+                    // CGB attributes
+                    boolean flipX = false, flipY = false, bgPriority = false, highVramBank = false;
+                    int cgbPalette = 0;
+                    if (cgb) {
+                        int attribute = vram[tilemap_base + mty * 32 + mtx + 0x2000];
+                        bgPriority = (attribute & 0x80) != 0;
+                        flipY = (attribute & 0x40) != 0;
+                        flipX = (attribute & 0x20) != 0;
+                        highVramBank = (attribute & 0x8) != 0;
+                        cgbPalette = attribute & 7;
+                    }
+
                     if (bg_tile_high) tile_num = (byte)tile_num;
-                    int row0 = vram[tile_num * 16 + row_base];
-                    int row1 = vram[tile_num * 16 + row_base + 1];
+                    int tileAddress = row_base + tile_num * 16;
+                    if (highVramBank)
+                        tileAddress += 0x2000;
+                    int row0 = vram[tileAddress];
+                    int row1 = vram[tileAddress + 1];
                     for (int x = 7; x >= 0; x--) {
                         int screen_x = x - (scroll_x & 7) + tx * 8;
                         if (screen_x < 0) {
@@ -116,9 +144,19 @@ public class GPU {
                         if (screen_x >= SCREEN_WIDTH) {
                             continue;
                         }
-                        int shade = bg_pal[palid] * 85; // Transform [0,3] to [0,255]
-                        shade = 255 - shade;
-                        screen.putPixel(screen_x, line, (shade << 16) | (shade << 8) | shade);
+                        int color;
+                        if (cgb) {
+                            int rgb = bgPalColor[cgbPalette * 4 + palid];
+                            int r = rgb & 31;
+                            int g = (rgb >> 5) & 31;
+                            int b = (rgb >> 10) & 31;
+                            color = (r << 19) | (g << 11) | (b << 3);
+                        } else {
+                            int shade = bg_pal[palid] * 85; // Transform [0,3] to [0,255]
+                            shade = 255 - shade;
+                            color = (shade << 16) | (shade << 8) | shade;
+                        }
+                        screen.putPixel(screen_x, line, color);
                         z_buf[line * 160 + screen_x] = palid;
                     }
                 }
@@ -136,10 +174,26 @@ public class GPU {
                             continue;
                         }
                         int tile_num = vram[index] & 0xff;
+
+                        // CGB attributes
+                        boolean flipX = false, flipY = false, bgPriority = false, highVramBank = false;
+                        int cgbPalette = 0;
+                        if (cgb) {
+                            int attribute = vram[index + 0x2000];
+                            bgPriority = (attribute & 0x80) != 0;
+                            flipY = (attribute & 0x40) != 0;
+                            flipX = (attribute & 0x20) != 0;
+                            highVramBank = (attribute & 0x8) != 0;
+                            cgbPalette = attribute & 7;
+                        }
+
                         if(bg_tile_high) tile_num = (byte)tile_num;
                         int row_base = tiledata_base + ty * 2;
+                        if (highVramBank)
+                            row_base += 0x2000;
                         int row0 = vram[tile_num * 16 + row_base];
                         int row1 = vram[tile_num * 16 + row_base + 1];
+
                         for(int x = 7; x >= 0; x--){
                             int screen_x = x - 7 + tx * 8 + window_x;
                             int palid = ((row1 & 1) << 1) | (row0 & 1);
@@ -148,9 +202,19 @@ public class GPU {
                             if(screen_x < 0 || screen_x >= 160) {
                                 continue; // Off-screen
                             }
-                            int shade = bg_pal[palid] * 85; // Transform [0,3] to [0,255]
-                            shade = 255 - shade;
-                            screen.putPixel(screen_x, line, (shade << 16) | (shade << 8) | shade);
+                            int color;
+                            if (cgb) {
+                                int rgb = bgPalColor[cgbPalette * 4 + palid];
+                                int r = rgb & 31;
+                                int g = (rgb >> 5) & 31;
+                                int b = (rgb >> 10) & 31;
+                                color = (r << 19) | (g << 11) | (b << 3);
+                            } else {
+                                int shade = bg_pal[palid] * 85; // Transform [0,3] to [0,255]
+                                shade = 255 - shade;
+                                color = (shade << 16) | (shade << 8) | shade;
+                            }
+                            screen.putPixel(screen_x, line, color);
                             z_buf[line * 160 + screen_x] |= palid;
                         }
                     }
@@ -179,6 +243,8 @@ public class GPU {
                     pattern &= ~1;
                 }
                 int pattern_base = pattern << 4;
+                if (cgb && sprite.useVramBank1)
+                    pattern_base += 0x2000;
                 int spriteY = line - y0;
                 if (sprite.y_flip) {
                     spriteY = height - 1 - spriteY;
@@ -197,13 +263,24 @@ public class GPU {
                         continue;
                     }
                     int pixel = ((row0 >> (7 - x)) & 1) | (((row1 >> (7 - x)) & 1) << 1);
-                    int color = (sprite.use_pal1 ? ob1_pal : ob0_pal)[pixel] * 85;
                     boolean draw = !sprite.priority;
                     draw |= z_buf[line * 160 + screenX] == 0;
+                    draw |= (!bg_on && cgb);
                     draw &= (pixel != 0);
                     if (draw) {
-                        color = 255 - color;
-                        screen.putPixel(screenX, line, (color << 16) | (color << 8) | color);
+                        int color;
+                        if (cgb) {
+                            int rgb = obPalColor[sprite.cgbPalette * 4 + pixel];
+                            int r = rgb & 31;
+                            int g = (rgb >> 5) & 31;
+                            int b = (rgb >> 10) & 31;
+                            color = (r << 19) | (g << 11) | (b << 3);
+                        } else {
+                            int shade = (sprite.use_pal1 ? ob1_pal : ob0_pal)[pixel] * 85;
+                            shade = 255 - shade;
+                            color = (shade << 16) | (shade << 8) | shade;
+                        }
+                        screen.putPixel(screenX, line, color);
                         occluded[screenX] = true;
                     }
                 }
@@ -311,82 +388,105 @@ public class GPU {
                 }
                 return vram[address] & 0xff;
             case 0xf:
-                switch((address >> 8) & 0xf) {
-                    case 0xe: { // OAM
-                        if (mode > 1)
-                            return 0xff;
-                        int offset = address & 0xff;
-                        if (offset >= 0xa0)
+                if ((address & 0xf0) == 0x40) {
+                    switch ((address >> 8) & 0xf) {
+                        case 0xe: { // OAM
+                            if (mode > 1)
+                                return 0xff;
+                            int offset = address & 0xff;
+                            if (offset >= 0xa0)
+                                return 0;
+                            offset >>= 2;
+                            SpriteAttrib sprite = attribs[offset];
+                            switch (address & 3) {
+                                case 0: //Y
+                                    return sprite.y;
+                                case 1: // X
+                                    return sprite.x;
+                                case 2:
+                                    return sprite.pattern;
+                                case 3: {
+                                    int flags = 0;
+                                    if (sprite.priority) flags |= 0x80;
+                                    if (sprite.y_flip) flags |= 0x40;
+                                    if (sprite.x_flip) flags |= 0x20;
+                                    if (cgb) {
+                                        if (sprite.useVramBank1) flags |= 0x8;
+                                        flags |= sprite.cgbPalette;
+                                    } else {
+                                        if (sprite.use_pal1) flags |= 0x10;
+                                        flags |= 7;
+                                    }
+                                    return flags;
+                                }
+                            }
                             return 0;
-                        offset >>= 2;
-                        SpriteAttrib sprite = attribs[offset];
-                        switch (address & 3) {
-                            case 0: //Y
-                                return sprite.y;
-                            case 1: // X
-                                return sprite.x;
-                            case 2:
-                                return sprite.pattern;
-                            case 3: {
-                                int flags = 0;
-                                if (sprite.priority) flags |= 0x80;
-                                if (sprite.y_flip) flags |= 0x40;
-                                if (sprite.x_flip) flags |= 0x20;
-                                if (sprite.use_pal1) flags |= 0x10;
-                                return flags;
-                            }
                         }
-                        return 0;
+                        case 0xf: { // Registers
+                            switch (address & 0xf) {
+                                case 0x00: // 0xff40 LCDC
+                                {
+                                    int lcdc = 0;
+                                    if (lcd_on) lcdc |= 0x80;
+                                    if (window_map_high) lcdc |= 0x40;
+                                    if (window_on) lcdc |= 0x20;
+                                    if (!bg_tile_high) lcdc |= 0x10;
+                                    if (bg_map_high) lcdc |= 0x8;
+                                    if (tall_sprites) lcdc |= 0x4;
+                                    if (sprites_on) lcdc |= 0x2;
+                                    if (bg_on) lcdc |= 0x1;
+                                    return lcdc;
+                                }
+                                case 0x01: // 0xff41 STAT
+                                {
+                                    int stat = mode;
+                                    if (lyc_int) stat |= 0x40;
+                                    if (oam_int) stat |= 0x20;
+                                    if (vblank_int) stat |= 0x10;
+                                    if (hblank_int) stat |= 0x8;
+                                    if (lyc_coincidence) stat |= 0x4;
+                                    return stat | 0x80;
+                                }
+                                case 0x02: // 0xff41 SCY
+                                    return scroll_y;
+                                case 0x03: // SCX
+                                    return scroll_x;
+                                case 0x04: // LY
+                                    return line;
+                                case 0x05: // LYC
+                                    return lyc;
+                                case 0x07: // BGP
+                                    return (bg_pal[0] | (bg_pal[1] << 2) | (bg_pal[2] << 4) | (bg_pal[3] << 6));
+                                case 0x08: // OB9
+                                    return (ob0_pal[0] | (ob0_pal[1] << 2) | (ob0_pal[2] << 4) | (ob0_pal[3] << 6));
+                                case 0x09: // OB1
+                                    return (ob1_pal[0] | (ob1_pal[1] << 2) | (ob1_pal[2] << 4) | (ob1_pal[3] << 6));
+                                case 0x0a: // WY
+                                    return window_y;
+                                case 0x0b: // WX
+                                    return window_x;
+                                case 0x0f:
+                                    if (!cgb)
+                                        return 0xff;
+                                    return vramBank | 0xfe;
+                            }
+                            break;
+                        }
                     }
-                    case 0xf: { // Registers
-                        switch (address & 0xf) {
-                            case 0x00: // 0xff40 LCDC
-                            {
-                                int lcdc = 0;
-                                if (lcd_on) lcdc |= 0x80;
-                                if (window_map_high) lcdc |= 0x40;
-                                if (window_on) lcdc |= 0x20;
-                                if (!bg_tile_high) lcdc |= 0x10;
-                                if (bg_map_high) lcdc |= 0x8;
-                                if (tall_sprites) lcdc |= 0x4;
-                                if (sprites_on) lcdc |= 0x2;
-                                if (bg_on) lcdc |= 0x1;
-                                return lcdc;
-                            }
-                            case 0x01: // 0xff41 STAT
-                            {
-                                int stat = mode;
-                                if (lyc_int) stat |= 0x40;
-                                if (oam_int) stat |= 0x20;
-                                if (vblank_int) stat |= 0x10;
-                                if (hblank_int) stat |= 0x8;
-                                if (lyc_coincidence) stat |= 0x4;
-                                return stat | 0x80;
-                            }
-                            case 0x02: // 0xff41 SCY
-                                return scroll_y;
-                            case 0x03: // SCX
-                                return scroll_x;
-                            case 0x04: // LY
-                                return line;
-                            case 0x05: // LYC
-                                return lyc;
-                            case 0x07: // BGP
-                                return (bg_pal[0] | (bg_pal[1] << 2) | (bg_pal[2] << 4) | (bg_pal[3] << 6));
-                            case 0x08: // OB9
-                                return (ob0_pal[0] | (ob0_pal[1] << 2) | (ob0_pal[2] << 4) | (ob0_pal[3] << 6));
-                            case 0x09: // OB1
-                                return (ob1_pal[0] | (ob1_pal[1] << 2) | (ob1_pal[2] << 4) | (ob1_pal[3] << 6));
-                            case 0x0a: // WY
-                                return window_y;
-                            case 0x0b: // WX
-                                return window_x;
-                            case 0x0f:
-                                if (!cgb)
-                                    return 0xff;
-                                return vramBank | 0xfe;
-                        }
-                        break;
+                } else if ((address & 0xf0) == 0x60) {
+                    switch (address & 0xf) {
+                        case 0x8:
+                            return bgPalIndex | 0x40 | (bgPalIncrement ? 0x80 : 0);
+                        case 0x9:
+                            if ((bgPalIndex & 1) == 0)
+                                return bgPalColor[bgPalIndex >> 1] & 0xff;
+                            return bgPalColor[bgPalIndex >> 1] >> 8;
+                        case 0xA:
+                            return obPalIndex | 0x40 | (obPalIncrement ? 0x80 : 0);
+                        case 0xB:
+                            if ((obPalIndex & 1) == 0)
+                                return obPalColor[obPalIndex >> 1] & 0xff;
+                            return obPalColor[obPalIndex >> 1] >> 8;
                     }
                 }
         }
@@ -428,69 +528,112 @@ public class GPU {
                                 sprite.priority = (value & 0x80) != 0;
                                 sprite.y_flip = (value & 0x40) != 0;
                                 sprite.x_flip = (value & 0x20) != 0;
-                                sprite.use_pal1 = (value & 0x10) != 0;
+                                if (cgb) {
+                                    sprite.useVramBank1 = (value & 0x8) != 0;
+                                    sprite.cgbPalette = value & 7;
+                                } else {
+                                    sprite.use_pal1 = (value & 0x10) != 0;
+                                }
                                 break;
                             }
                         }
                         break;
                     case 0xf: // Registers
-                        switch (address & 0xf) {
-                            case 0x0: // LCDC
-                                lcd_on = (value & 0x80) != 0;
-                                window_map_high = (value & 0x40) != 0;
-                                window_on = (value & 0x20) != 0;
-                                bg_tile_high = (value & 0x10) == 0; /* Tiledata address is higher when this bit not set */
-                                bg_map_high = (value & 0x8) != 0;
-                                tall_sprites = (value & 0x4) != 0;
-                                sprites_on = (value & 0x2) != 0;
-                                bg_on = (value & 0x1) != 0;
-                                break;
-                            case 0x1: // STAT
-                                lyc_int = (value & 0x40) != 0;
-                                oam_int = (value & 0x20) != 0;
-                                vblank_int = (value & 0x10) != 0;
-                                hblank_int = (value & 0x8) != 0;
-                                break;
-                            case 0x2:
-                                scroll_y = value;
-                                break;
-                            case 0x3:
-                                scroll_x = value;
-                                break;
-                            case 0x4:
-                                line = value;
-                                break;
-                            case 0x5:
-                                lyc = value;
-                                break;
-                            case 0x7:
-                                bg_pal[0] = value & 3;
-                                bg_pal[1] = (value >> 2) & 3;
-                                bg_pal[2] = (value >> 4) & 3;
-                                bg_pal[3] = (value >> 6) & 3;
-                                break;
-                            case 0x8:
-                                ob0_pal[0] = value & 3;
-                                ob0_pal[1] = (value >> 2) & 3;
-                                ob0_pal[2] = (value >> 4) & 3;
-                                ob0_pal[3] = (value >> 6) & 3;
-                                break;
-                            case 0x9:
-                                ob1_pal[0] = value & 3;
-                                ob1_pal[1] = (value >> 2) & 3;
-                                ob1_pal[2] = (value >> 4) & 3;
-                                ob1_pal[3] = (value >> 6) & 3;
-                                break;
-                            case 0xa:
-                                window_y = value;
-                                break;
-                            case 0xb:
-                                window_x = value;
-                                break;
-                            case 0xf:
-                                if (cgb)
-                                    vramBank = value & 1;
-                                break;
+                        if ((address & 0xf0) == 0x40) {
+                            switch (address & 0xf) {
+                                case 0x0: // LCDC
+                                    lcd_on = (value & 0x80) != 0;
+                                    window_map_high = (value & 0x40) != 0;
+                                    window_on = (value & 0x20) != 0;
+                                    bg_tile_high = (value & 0x10) == 0; /* Tiledata address is higher when this bit not set */
+                                    bg_map_high = (value & 0x8) != 0;
+                                    tall_sprites = (value & 0x4) != 0;
+                                    sprites_on = (value & 0x2) != 0;
+                                    bg_on = (value & 0x1) != 0;
+                                    break;
+                                case 0x1: // STAT
+                                    lyc_int = (value & 0x40) != 0;
+                                    oam_int = (value & 0x20) != 0;
+                                    vblank_int = (value & 0x10) != 0;
+                                    hblank_int = (value & 0x8) != 0;
+                                    break;
+                                case 0x2:
+                                    scroll_y = value;
+                                    break;
+                                case 0x3:
+                                    scroll_x = value;
+                                    break;
+                                case 0x4:
+                                    line = value;
+                                    break;
+                                case 0x5:
+                                    lyc = value;
+                                    break;
+                                case 0x7:
+                                    bg_pal[0] = value & 3;
+                                    bg_pal[1] = (value >> 2) & 3;
+                                    bg_pal[2] = (value >> 4) & 3;
+                                    bg_pal[3] = (value >> 6) & 3;
+                                    break;
+                                case 0x8:
+                                    ob0_pal[0] = value & 3;
+                                    ob0_pal[1] = (value >> 2) & 3;
+                                    ob0_pal[2] = (value >> 4) & 3;
+                                    ob0_pal[3] = (value >> 6) & 3;
+                                    break;
+                                case 0x9:
+                                    ob1_pal[0] = value & 3;
+                                    ob1_pal[1] = (value >> 2) & 3;
+                                    ob1_pal[2] = (value >> 4) & 3;
+                                    ob1_pal[3] = (value >> 6) & 3;
+                                    break;
+                                case 0xa:
+                                    window_y = value;
+                                    break;
+                                case 0xb:
+                                    window_x = value;
+                                    break;
+                                case 0xf:
+                                    if (cgb)
+                                        vramBank = value & 1;
+                                    break;
+                            }
+                        } else if ((address & 0xf0) == 0x60) {
+                            switch (address & 0xf) {
+                                case 0x8: // BG Pal index
+                                    bgPalIndex = value & 63;
+                                    bgPalIncrement = (value & 0x80) != 0;
+                                    break;
+                                case 0x9: { // BG Pal data
+                                    int index = bgPalIndex >> 1;
+                                    if ((bgPalIndex & 1) == 0) {
+                                        bgPalColor[index] &= ~0xff;
+                                        bgPalColor[index] |= value;
+                                    } else {
+                                        bgPalColor[index] &= 0xff;
+                                        bgPalColor[index] |= value << 8;
+                                    }
+                                    if (bgPalIncrement)
+                                        bgPalIndex = (bgPalIndex + 1) & 63;
+                                    break;
+                                }
+                                case 0xA: // Ob Pal index
+                                    obPalIndex = value & 63;
+                                    obPalIncrement = (value & 0x80) != 0;
+                                    break;
+                                case 0xB: { // OB Pal data
+                                    int index = obPalIndex >> 1;
+                                    if ((obPalIndex & 1) == 0) {
+                                        obPalColor[index] &= ~0xff;
+                                        obPalColor[index] |= value;
+                                    } else {
+                                        obPalColor[index] &= 0xff;
+                                        obPalColor[index] |= value << 8;
+                                    }
+                                    if (obPalIncrement)
+                                        obPalIndex = (obPalIndex + 1) & 63;
+                                }
+                            }
                         }
                 }
         }

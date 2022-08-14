@@ -46,7 +46,7 @@ public class Machine {
      * Speeds up emulation by the specified factor
      * Must never be 0!!
      */
-    int speedUp = 1;
+    int speedUp = 2;
 
     MachineMode mode;
     boolean doubleSpeed;
@@ -184,13 +184,14 @@ public class Machine {
     public static void main(String[] args){
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
-        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
+//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon crystal.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg_sound\\rom_singles\\01-registers.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb";
+        String ROMPath = "D:\\Games\\GBA\\gbtest\\cgb-acid2.gbc";
         Machine machine = new Machine(new File(ROMPath), MachineMode.GAMEBOY_COLOR);
 //        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
         Screen screen = new Screen();

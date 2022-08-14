@@ -8,18 +8,19 @@ public class PcSpeaker implements SoundBoard.Speaker {
 
     private static final int BUFFER_SIZE = 2048;
 
-    private AudioFormat audioFormat;
-    private SoundBoard.SpeakerFormat speakerFormat;
+    private final SoundBoard.SpeakerFormat speakerFormat;
     private SourceDataLine line;
-    private int bufferSize;
-    private byte[] buffer;
+    private final int bufferSize;
+    private final byte[] buffer;
+    private int bufferPtr;
 
+    // Can be constructor-supplied later
     private int channels = 2;
 
     public PcSpeaker(int bufferSize) {
         this.bufferSize = bufferSize;
         buffer = new byte[bufferSize * channels];
-        audioFormat = new AudioFormat(AudioFormat.Encoding.PCM_UNSIGNED, 44100, 8, channels, channels, 44100, false);
+        AudioFormat audioFormat = new AudioFormat(AudioFormat.Encoding.PCM_UNSIGNED, 44100, 8, channels, channels, 44100, false);
         speakerFormat = new SoundBoard.SpeakerFormat(44100, true, true);
         Line.Info info = new DataLine.Info(SourceDataLine.class, audioFormat);
         try {
@@ -40,17 +41,14 @@ public class PcSpeaker implements SoundBoard.Speaker {
     }
 
     public void consume(byte[] left, byte[] right, int numSamples) {
-        int index = 0;
-        while (numSamples > 0) {
-            int n = Math.min(numSamples, bufferSize);
-            for (int i = 0; i < n; i++) {
-                buffer[i * channels] = left[index];
-                if (channels > 0)
-                    buffer[i * channels + 1] = right[index];
-                index += 1;
+        for (int i = 0; i < numSamples; i++) {
+            buffer[bufferPtr * channels] = left[i];
+            if (channels > 1)
+                buffer[bufferPtr * channels + 1] = right[i];
+            if(++bufferPtr == bufferSize) {
+                bufferPtr = 0;
+                line.write(buffer, 0, bufferSize * channels);
             }
-            line.write(buffer, 0, n * channels);
-            numSamples -= n;
         }
     }
 
