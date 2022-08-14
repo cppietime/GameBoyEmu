@@ -53,6 +53,7 @@ public class MMU {
     public boolean left_bios = false;
 
     private boolean cgb;
+    private int wramBank = 1; // CGB only
 
     /**
      * Initialize according to power up seqeunce
@@ -74,7 +75,7 @@ public class MMU {
         rom_bank = 1;
         ram_bank = 0;
         external_ram = new byte[ram_size];
-        internal_ram = new byte[0x2000];
+        internal_ram = new byte[cgb ? 0x8000 : 0x2000];
         zero_page = new byte[128];
         // Startup sequence
         write8(0xff00, 0xCF);
@@ -239,8 +240,13 @@ public class MMU {
                 return 0xff;
             case 6: //0xc000 - 0xdfff
             case 7: //0xe000 - 0xffff
-                if(address < 0xfe00)
-                    return internal_ram[address & 0x1fff] & 0xff; // Echo of RAM
+                if(address < 0xfe00) {
+                    address &= 0x1fff;
+                    if (cgb && address >= 0x1000) {
+                        address = (wramBank << 12) | (address & 0xfff);
+                    }
+                    return internal_ram[address] & 0xff; // Echo of RAM
+                }
                 else if(address < 0xfea0){
                     return machine.gpu.read(address);
                 }
@@ -261,6 +267,9 @@ public class MMU {
                         }
                     }
                     return 0xff;
+                }
+                else if (address == 0xff70 && cgb) {
+                    return wramBank | 0xf8;
                 }
                 else if(address < 0xff80) return 0xff; // Unusable
                 else if(address != 0xffff) // Zero-page
@@ -426,8 +435,13 @@ public class MMU {
                 break;
             case 6: // 0xc000 - 0xdfff Internal RAM
             case 7: // 0xe000 - 0xffff Echo of RAM + later data
-                if(address < 0xfe00)
-                    internal_ram[address & 0x1fff] = (byte)(value & 0xff);
+                if(address < 0xfe00) {
+                    address &= 0x1fff;
+                    if (cgb && address >= 0x1000) {
+                        address = (wramBank << 12) | (address & 0xfff);
+                    }
+                    internal_ram[address] = (byte) (value & 0xff);
+                }
                 else if(address < 0xfea0){
                     machine.gpu.write(address, value);
                 }
@@ -456,6 +470,9 @@ public class MMU {
                         System.out.println(machine.cpu.calledOps.stream().sorted().map(Integer::toHexString).collect(Collectors.joining(", ")));
                         System.out.println("Line on leave bios is " + machine.gpu.line);
                     }
+                }
+                else if (address == 0xff70 && cgb) {
+                    wramBank = value & 7;
                 }
                 else if(address < 0xff80); // Unusable
                 else if(address == 0xffff){ // Interrupt enable register
