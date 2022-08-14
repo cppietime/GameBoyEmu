@@ -40,7 +40,7 @@ public class GPU {
     private final SpriteAttrib[] attribs = new SpriteAttrib[40];
     private final Integer[] spriteOrder = new Integer[40];
     private final boolean[] occluded = new boolean[SCREEN_WIDTH];
-    byte[] vram = new byte[VRAM_SIZE];
+    byte[] vram;
 
     private final int[] z_buf = new int[SCREEN_WIDTH * SCREEN_HEIGHT];
 
@@ -49,10 +49,12 @@ public class GPU {
     public GameboyScreen screen = null;
 
     private boolean cgb;
+    private int vramBank; // CGB only
 
     public GPU(Machine machine, boolean cgb){
         this.machine = machine;
         this.cgb = cgb;
+        vram = new byte[cgb ? (VRAM_SIZE * 2) : VRAM_SIZE];
         for(int i = 0; i < 40; i++){
             attribs[i] = new SpriteAttrib();
             spriteOrder[i] = i;
@@ -303,7 +305,11 @@ public class GPU {
             case 0x9:
 //                if (mode == 3)
 //                    return 0xff;
-                return vram[address & 0x1fff] & 0xff;
+                address &= 0x1fff;
+                if (cgb) {
+                    address = address | (vramBank << 13);
+                }
+                return vram[address] & 0xff;
             case 0xf:
                 switch((address >> 8) & 0xf) {
                     case 0xe: { // OAM
@@ -375,6 +381,10 @@ public class GPU {
                                 return window_y;
                             case 0x0b: // WX
                                 return window_x;
+                            case 0x0f:
+                                if (!cgb)
+                                    return 0xff;
+                                return vramBank | 0xfe;
                         }
                         break;
                     }
@@ -388,7 +398,11 @@ public class GPU {
             case 0x8: // VRAM
             case 0x9:
 //                if (mode != 3)
-                    vram[address & 0x1fff] = (byte)value;
+                address &= 0x1fff;
+                if (cgb) {
+                    address = address | (vramBank << 13);
+                }
+                vram[address] = (byte)value;
                 break;
             case 0xf: // OAM and registers
                 switch((address >> 8) & 0xf) {
@@ -472,6 +486,10 @@ public class GPU {
                                 break;
                             case 0xb:
                                 window_x = value;
+                                break;
+                            case 0xf:
+                                if (cgb)
+                                    vramBank = value & 1;
                                 break;
                         }
                 }
