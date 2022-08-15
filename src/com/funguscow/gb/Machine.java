@@ -49,6 +49,8 @@ public class Machine {
     int speedUp = 1;
 
     MachineMode mode;
+
+    // CGB stuff
     boolean doubleSpeed;
     boolean usingColor;
 
@@ -145,6 +147,15 @@ public class Machine {
         }
     }
 
+    public boolean trySpeedSwitch() {
+        if (usingColor) {
+            doubleSpeed = !doubleSpeed;
+            stop = false;
+            return true;
+        }
+        return false;
+    }
+
     /**
      * Perform one instruction cycle
      */
@@ -157,9 +168,9 @@ public class Machine {
             }
         }
         int mCycles = cpu.performOp(this); // Execute an opcode after checking for interrupts
-        gpu.incr(mCycles); // Increment the GPU's state
+        gpu.increment(mCycles); // Increment the GPU's state
         timer.incr(mCycles); // Increment the timer's state
-        soundBoard.step(mCycles, speedUp);
+        soundBoard.step(mCycles, speedUp, doubleSpeed);
     }
 
     /**

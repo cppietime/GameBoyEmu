@@ -531,14 +531,19 @@ public class SoundBoard {
     /**
      * Called periodically from the machine to play sound
      * @param cycles Number of m-cycles that have passed
+     * @param timeDivisor Speedup factor
+     * @param doubleSpeed If true, half as many samples are to be generated
      */
-    public void step(int cycles, int timeDivisor) {
+    public void step(int cycles, int timeDivisor, boolean doubleSpeed) {
         if (speaker == null) {
             return;
         }
         incrementTimer(cycles);
         latentCycles += (long) cycles * format.sampleRate;
         int numSamples = (int)(latentCycles >> 20) / timeDivisor;
+        if (doubleSpeed) {
+            numSamples >>= 1;
+        }
         for (int i = 0; i < numSamples; i++) {
             latentCycles -= (long) timeDivisor << 20;
             writeSample();

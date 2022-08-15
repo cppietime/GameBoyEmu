@@ -325,7 +325,7 @@ public class GPU {
      * Move GPU ahead a number of cycles, progressing mode as needed
      * @param cycles Cycles to increment (m-cycles)
      */
-    public void incr(int cycles){
+    public void increment(int cycles){
         if (!lcdOn) {
             mode = 0;
             modeCycles = 0;
@@ -398,6 +398,9 @@ public class GPU {
                 if(modeCycles >= 43){
                     modeCycles -= 43;
                     mode = 0;
+                    if (cgb) {
+                        machine.mmu.onHblank();
+                    }
                     scanline();
                     if(hblankInt) {
                         machine.interruptsFired |= 0x2;

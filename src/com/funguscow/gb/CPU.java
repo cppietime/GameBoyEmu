@@ -104,7 +104,6 @@ public class CPU {
     }
 
     private void intRst(int address){
-//        System.out.println("Handling interrupt at " + address);
         lastInt = address;
         sp -= 2;
         mmu.write16(sp, pc);
@@ -128,9 +127,6 @@ public class CPU {
      * @return The number of m-cycles
      */
     public int opcode(Machine machine, int opcode){
-//        if (!mmu.left_bios) {
-//            System.out.printf("%02x: %02x - %04x\n", pc - 1, opcode, sp);
-//        }
         calledOps.add(opcode);
         // Opcodes with common high nybbles
         switch (opcode >> 4) {
@@ -310,9 +306,14 @@ public class CPU {
             case 0x00: // NOP
                 return 1;
             case 0x10: // STOP
-                System.out.printf("Stopping at %04xf\n", pc++);
-//                machine.stop = true;
-                // Currently no way to unset stop
+                if (mmu.pendingSpeedSwitch) {
+                    if (machine.trySpeedSwitch()) {
+                        mmu.pendingSpeedSwitch = false;
+                    }
+                }
+                else {
+                    machine.stop = true;
+                }
                 return 1;
             case 0x20: // JR NZ,n
                 return jumpRelative(!zero);

@@ -51,8 +51,15 @@ public class MMU {
     private boolean mbc3HaltRtc, mbc3DaysOverflow;
     public boolean leftBios = false;
 
+    // CGB only stuff
     private boolean cgb;
-    private int wramBank = 1; // CGB only
+    private int wramBank = 1;
+    boolean pendingSpeedSwitch;
+    private int hdmaSource;
+    private int hdmaDest;
+    private int hdmaRemaining;
+    private int hdmaProgress;
+    private boolean hdmaActive;
 
     /**
      * Initialize according to power up seqeunce
@@ -175,6 +182,35 @@ public class MMU {
         }
     }
 
+    public void startHDMA(boolean hblank, int size) {
+        if (hblank) {
+            hdmaRemaining = (size + 1) << 4;
+            hdmaProgress = 0;
+            hdmaActive = true;
+        } else {
+            size = (size + 1) << 4;
+            for (int i = 0; i < size; i++) {
+                int src = read8(hdmaSource + i);
+                write8(0x8000 + hdmaDest + i, src);
+            }
+        }
+    }
+
+    public void onHblank() {
+        if (!hdmaActive) {
+            return;
+        }
+        for (int i = 0; i < 0x10; i++) {
+            int src = read8(hdmaSource + (hdmaProgress << 4) + i);
+            write8(0x8000 + hdmaDest + (hdmaProgress << 4) + i, src);
+        }
+        hdmaProgress++;
+        if (--hdmaRemaining == 0) {
+            hdmaActive = false;
+            hdmaProgress = 0xff;
+        }
+    }
+
     /**
      * Read 1 byte from address
      * @param address Address of byte to read
@@ -253,10 +289,13 @@ public class MMU {
                 else if(address < 0xfea0){
                     return machine.gpu.read(address);
                 }
-                else if(address < 0xff00) return 0; // Unusable
+                else if(address < 0xff00) return 0xff; // Unusable
                 else if(address < 0xff50){
                     if((address & ~3) == 0xff04) {
                         return machine.timer.read(address & 3);
+                    }
+                    else if (address == 0xff4d && cgb) {
+                        return 0x7e | (machine.doubleSpeed ? 0x80 : 0) | (pendingSpeedSwitch ? 1 : 0);
                     }
                     else if(address >= 0xff40 && address != 0xff46) {
                         return machine.gpu.read(address);
@@ -273,6 +312,9 @@ public class MMU {
                         }
                     }
                     return 0xff;
+                }
+                else if (address == 0xff55 && cgb) {
+                    return (hdmaActive ? 0x80 : 0) | ((hdmaProgress >> 4) - 1);
                 }
                 else if (address < 0xff68) {
                     return 0xff;
@@ -472,7 +514,7 @@ public class MMU {
                     if((address & ~3) == 0xff04)
                         machine.timer.write(address & 3, value);
                     else if (address == 0xff4d) {
-                        System.out.println("Attempting speed switch!!!");
+                        pendingSpeedSwitch = (value & 1) != 0;
                     }
                     else if(address >= 0xff40 && address != 0xff46) {
                         machine.gpu.write(address, value);
@@ -496,8 +538,29 @@ public class MMU {
                         leftBios = true;
                     }
                 }
-                else if (address == 0xff55) {
-                    System.out.println("Attempting HDMA!!!");
+                else if (address == 0xff51 && cgb) {
+                    hdmaSource &= 0xff;
+                    hdmaSource |= value << 8;
+                }
+                else if (address == 0xff52 && cgb) {
+                    hdmaSource &= ~0xff;
+                    hdmaSource |= value & 0xf0;
+                }
+                else if (address == 0xff53 && cgb) {
+                    hdmaDest &= 0xff;
+                    hdmaDest |= (value << 8) & 0x1f00;
+                }
+                else if (address == 0xff54 && cgb) {
+                    hdmaDest &= ~0xff;
+                    hdmaDest |= value & 0xf0;
+                }
+                else if (address == 0xff55 && cgb) {
+                    boolean hblank = (value & 0x80) != 0;
+                    if (!hblank && hdmaActive) {
+                        hdmaActive = false;
+                    } else {
+                        startHDMA(hblank, value & 0x7f);
+                    }
                 }
                 else if (address < 0xff68) {} // Unused
                 else if (address < 0xff70 && cgb) { // 0xFF68 - 0xFF6F, CGB stuff
