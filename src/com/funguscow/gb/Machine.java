@@ -14,9 +14,9 @@ public class Machine {
     public static final int[] RAM_SIZES = {0, 1 << 11, 1 << 13, 1 << 15, 1 << 17};
 
     public enum MachineMode{
-        GAMEBOY(1, false, MMU.BIOS_DMG),
-        GAMEBOY_POCKET(1, false, MMU.BIOS_DMG),
-        GAMEBOY_COLOR(0x11, true, MMU.BIOS_DMG);
+        GAMEBOY(1, false, BootRoms.BIOS_DMG),
+        GAMEBOY_POCKET(1, false, BootRoms.BIOS_DMG),
+        GAMEBOY_COLOR(0x11, true, BootRoms.BIOS_CGB);
 
         public final int afInitial;
         public final boolean isCgb;
@@ -73,7 +73,7 @@ public class Machine {
                 throw new Exception("ROM file too small to be valid!");
             int cartridgeType = header[0x147] & 0xff;
             int colorMode = header[0x143] & 0xff;
-            usingColor = (mode.isCgb && (colorMode & 0x80) != 0 && (colorMode & 0x6) == 0);
+            usingColor = (mode.isCgb && (colorMode & 0x80) != 0xff && (colorMode & 0x6) == 0);
             int mbc = 0;
             int romBanks;
             int ramSize = 0;

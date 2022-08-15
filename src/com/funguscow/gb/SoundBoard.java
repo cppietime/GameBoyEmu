@@ -221,10 +221,10 @@ public class SoundBoard {
                 break;
             case 0x16:
                 value |= masterEnable ? 0x80 : 0;
-                value |= enable1 ? 0x1 : 0;
-                value |= enable2 ? 0x2 : 0;
-                value |= enable3 ? 0x4 : 0;
-                value |= enable4 ? 0x8 : 0;
+                value |= enable1 && length1 > 0 ? 0x1 : 0;
+                value |= enable2 && length2 > 0 ? 0x2 : 0;
+                value |= enable3 && length3 > 0 ? 0x4 : 0;
+                value |= enable4 && length4 > 0 ? 0x8 : 0;
                 value |= 0x70;
                 break;
             case 0x20:
@@ -535,10 +535,10 @@ public class SoundBoard {
      * @param doubleSpeed If true, half as many samples are to be generated
      */
     public void step(int cycles, int timeDivisor, boolean doubleSpeed) {
+        incrementTimer(cycles);
         if (speaker == null) {
             return;
         }
-        incrementTimer(cycles);
         latentCycles += (long) cycles * format.sampleRate;
         int numSamples = (int)(latentCycles >> 20) / timeDivisor;
         if (doubleSpeed) {
