@@ -1,4 +1,4 @@
-package com.funguscow.gb.frontend;
+package frontend;
 
 import com.funguscow.gb.GPU;
 import com.funguscow.gb.Keypad;
@@ -15,6 +15,8 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 
 public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
+
+    private final int scale = 2;
 
     private final Machine machine;
     private final BufferedImage image;
@@ -75,10 +77,10 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
             }
         });
         JPanel panel = (JPanel) frame.getContentPane();
-        panel.setPreferredSize(new Dimension(160, 144));
+        panel.setPreferredSize(new Dimension(160 * scale, 144 * scale));
         panel.setLayout(null);
         panel.add(this);
-        setBounds(0, 0, 160, 144);
+        setBounds(0, 0, 160 * scale, 144 * scale);
         setIgnoreRepaint(true);
         frame.pack();
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -91,7 +93,7 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
     }
 
     public Dimension getPreferredSize(){
-        return new Dimension(160, 144);
+        return new Dimension(160 * scale, 144 * scale);
     }
 
     public void putPixel(int x, int y, int pixel){
@@ -100,13 +102,17 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
 
     public void update(){
         Graphics2D g = (Graphics2D) strategy.getDrawGraphics();
-        g.drawImage(image, 0, 0, this);
+        g.drawImage(image, 0, 0, 160 * scale, 144 * scale, this);
         g.dispose();
         strategy.show();
         if (++numFrames % 100 == 0) {
             long passed = System.currentTimeMillis() - startTime;
             float fps = (numFrames * 1000f) / passed;
             frame.setTitle(String.format("Fps: %.02f", fps));
+            if (numFrames % 1000 == 0) {
+                numFrames = 0;
+                startTime += passed;
+            }
         }
     }
 
@@ -152,7 +158,7 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
                 }
                 break;
             case KeyEvent.VK_SPACE:
-                machine.speedUp = 5;
+                machine.speedUp = 10;
                 machine.mute(true);
                 break;
         }

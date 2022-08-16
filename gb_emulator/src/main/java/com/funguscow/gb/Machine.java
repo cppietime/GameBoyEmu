@@ -190,21 +190,6 @@ public class Machine {
     }
 
     /**
-     * Load up the saved external RAM
-     * @param RAM File containing literal binary data of external RAM state
-     */
-    @Deprecated
-    public void loadRAM(File RAM) {
-        try {
-            InputStream is = new FileInputStream(RAM);
-            mmu.loadRam(is, 0, mmu.externalRam.length);
-            is.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    /**
      *
      * @return true if speed switch succeeded
      */
@@ -233,7 +218,7 @@ public class Machine {
             }
         }
         int mCycles = cpu.performOp(this); // Execute an opcode after checking for interrupts
-        gpu.increment(mCycles); // Increment the GPU's state
+        gpu.increment(mCycles, soundBoard.silent || soundBoard.speaker == null); // Increment the GPU's state
         timer.increment(mCycles); // Increment the timer's state
         soundBoard.step(mCycles, speedUp, doubleSpeed);
         mmu.incrementRtc();

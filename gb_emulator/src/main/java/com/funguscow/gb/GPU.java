@@ -372,8 +372,9 @@ public class GPU {
     /**
      * Move GPU ahead a number of cycles, progressing mode as needed
      * @param cycles Cycles to increment (m-cycles)
+     * @param silent When the APU is active, it handles timing. Otherwise, the GPU should
      */
-    public void increment(int cycles){
+    public void increment(int cycles, boolean silent){
         if (!lcdOn) {
             mode = 0;
             modeCycles = 0;
@@ -410,10 +411,9 @@ public class GPU {
                         mode = 1;
                         long passed = System.currentTimeMillis() - lastVBlank;
                         long targetWait = MS_BETWEEN_VBLANKS / machine.speedUp - passed;
-                        if (targetWait > WAIT_THRESHOLD) {
+                        if (targetWait > WAIT_THRESHOLD && silent) {
                             try {
-                                // If I want to sleep, do it here
-//                                Thread.sleep(targetWait);
+                                Thread.sleep(targetWait);
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }

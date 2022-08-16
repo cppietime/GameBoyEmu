@@ -1,4 +1,4 @@
-package com.funguscow.gb.frontend;
+package frontend;
 
 import com.funguscow.gb.SoundBoard;
 

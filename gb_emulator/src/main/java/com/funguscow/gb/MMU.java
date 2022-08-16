@@ -112,49 +112,6 @@ public class MMU {
         ROM.read(rom, offset, len);
     }
 
-    /**
-     * Load the external RAM from a byte array
-     * @param RAM Source
-     * @param offset offset into external ram
-     * @param len number of bytes
-     */
-    public void loadRam(byte[] RAM, int offset, int len) {
-        System.arraycopy(RAM, 0, externalRam, offset, len);
-    }
-
-    /**
-     * Load external RAM from stream
-     * @param RAM source
-     * @param offset offset into ram
-     * @param len number of bytes
-     * @throws IOException from inner read
-     */
-    public void loadRam(InputStream RAM, int offset, int len) throws IOException {
-        RAM.read(externalRam, offset, len);
-    }
-
-    /**
-     * Save external RAM to another array
-     * @param RAM destination
-     * @param dstOffset offset in RAM
-     * @param srcOffset offset from external ram
-     * @param len length in bytes
-     */
-    public void saveRam(byte[] RAM, int dstOffset, int srcOffset, int len) {
-        System.arraycopy(externalRam, srcOffset, RAM, dstOffset, len);
-    }
-
-    /**
-     * Save external RAM to a stream
-     * @param RAM destination
-     * @param offset offset in self
-     * @param len length in bytes
-     * @throws IOException from inner read
-     */
-    public void saveRam(OutputStream RAM, int offset, int len) throws IOException {
-        RAM.write(externalRam, offset, len);
-    }
-
     public void saveERam(DataOutputStream dos) throws IOException {
         dos.write("ERAM".getBytes(StandardCharsets.UTF_8));
         dos.writeInt(externalRam.length);
