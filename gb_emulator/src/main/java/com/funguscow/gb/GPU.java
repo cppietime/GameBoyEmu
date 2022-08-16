@@ -409,6 +409,7 @@ public class GPU {
                             machine.interruptsFired |= 0x2;
                         }
                         mode = 1;
+                        machine.mmu.onVblank();
                         long passed = System.currentTimeMillis() - lastVBlank;
                         long targetWait = MS_BETWEEN_VBLANKS / machine.speedUp - passed;
                         if (targetWait > WAIT_THRESHOLD && silent) {

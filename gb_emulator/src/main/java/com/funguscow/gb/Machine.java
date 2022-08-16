@@ -206,10 +206,6 @@ public class Machine {
      * Perform one instruction cycle
      */
     public void cycle(){
-        if (cpu.pc == 0x100) {
-            printDebugState();
-        }
-
         while (stop) {
             try {
                 Thread.sleep(16);
@@ -274,6 +270,14 @@ public class Machine {
     public void attachSpeaker(SoundBoard.Speaker speaker) {
         soundBoard.speaker = speaker;
         soundBoard.setSpeaker(speaker);
+    }
+
+    /**
+     *
+     * @return Exposes the MMU, used for cheats
+     */
+    public MMU getMmu() {
+        return mmu;
     }
 
     /**

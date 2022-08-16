@@ -6,32 +6,31 @@ import com.funguscow.gb.Machine;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
-import java.awt.event.WindowEvent;
-import java.awt.event.WindowListener;
+import java.awt.event.*;
 import java.awt.image.BufferStrategy;
 import java.awt.image.BufferedImage;
 import java.io.*;
 
 public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
 
-    private final int scale = 2;
-
-    private final Machine machine;
+    private Machine machine;
     private final BufferedImage image;
     private BufferStrategy strategy;
     private boolean open = true;
     private JFrame frame;
+    private JPanel panel;
     public Keypad keypad;
+    private int width, height;
 
     private long startTime;
     private int numFrames;
 
     public Screen(Machine machine){
         startTime = System.currentTimeMillis();
-        image = new BufferedImage(160, 144, BufferedImage.TYPE_INT_RGB);
         this.machine = machine;
+        width = 160;
+        height = 144;
+        image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
     }
 
     public boolean isOpen() {
@@ -76,11 +75,33 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
 
             }
         });
-        JPanel panel = (JPanel) frame.getContentPane();
-        panel.setPreferredSize(new Dimension(160 * scale, 144 * scale));
+        panel = (JPanel) frame.getContentPane();
+        panel.addComponentListener(new ComponentListener() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                Dimension newSize = e.getComponent().getSize();
+                updateSize(newSize.width, newSize.height);
+            }
+
+            @Override
+            public void componentMoved(ComponentEvent e) {
+
+            }
+
+            @Override
+            public void componentShown(ComponentEvent e) {
+
+            }
+
+            @Override
+            public void componentHidden(ComponentEvent e) {
+
+            }
+        });
+        panel.setPreferredSize(new Dimension(width, height));
         panel.setLayout(null);
         panel.add(this);
-        setBounds(0, 0, 160 * scale, 144 * scale);
+        setBounds(0, 0, width, height);
         setIgnoreRepaint(true);
         frame.pack();
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -92,8 +113,15 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
         strategy = getBufferStrategy();
     }
 
+    private void updateSize(int w, int h) {
+        width = w;
+        height = h;
+        panel.setPreferredSize(new Dimension(width, height));
+        setBounds(0, 0, width, height);
+    }
+
     public Dimension getPreferredSize(){
-        return new Dimension(160 * scale, 144 * scale);
+        return new Dimension(width, height);
     }
 
     public void putPixel(int x, int y, int pixel){
@@ -102,7 +130,7 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
 
     public void update(){
         Graphics2D g = (Graphics2D) strategy.getDrawGraphics();
-        g.drawImage(image, 0, 0, 160 * scale, 144 * scale, this);
+        g.drawImage(image, 0, 0, width, height, this);
         g.dispose();
         strategy.show();
         if (++numFrames % 100 == 0) {
@@ -158,7 +186,7 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
                 }
                 break;
             case KeyEvent.VK_SPACE:
-                machine.speedUp = 10;
+                machine.speedUp = 200;
                 machine.mute(true);
                 break;
         }
@@ -168,35 +196,28 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
     public void keyReleased(KeyEvent e) {
         if(keypad == null)
             return;
-        switch(e.getKeyCode()){
-            case KeyEvent.VK_RIGHT:
-                keypad.keyUp(Keypad.KEY_RIGHT); break;
-            case KeyEvent.VK_LEFT:
-                keypad.keyUp(Keypad.KEY_LEFT); break;
-            case KeyEvent.VK_UP:
-                keypad.keyUp(Keypad.KEY_UP); break;
-            case KeyEvent.VK_DOWN:
-                keypad.keyUp(Keypad.KEY_DOWN); break;
-            case KeyEvent.VK_Z:
-                keypad.keyUp(Keypad.KEY_A); break;
-            case KeyEvent.VK_X:
-                keypad.keyUp(Keypad.KEY_B); break;
-            case KeyEvent.VK_C:
-                keypad.keyUp(Keypad.KEY_START); break;
-            case KeyEvent.VK_D:
-                keypad.keyUp(Keypad.KEY_SELECT); break;
-            case KeyEvent.VK_SPACE:
+        switch (e.getKeyCode()) {
+            case KeyEvent.VK_RIGHT -> keypad.keyUp(Keypad.KEY_RIGHT);
+            case KeyEvent.VK_LEFT -> keypad.keyUp(Keypad.KEY_LEFT);
+            case KeyEvent.VK_UP -> keypad.keyUp(Keypad.KEY_UP);
+            case KeyEvent.VK_DOWN -> keypad.keyUp(Keypad.KEY_DOWN);
+            case KeyEvent.VK_Z -> keypad.keyUp(Keypad.KEY_A);
+            case KeyEvent.VK_X -> keypad.keyUp(Keypad.KEY_B);
+            case KeyEvent.VK_C -> keypad.keyUp(Keypad.KEY_START);
+            case KeyEvent.VK_D -> keypad.keyUp(Keypad.KEY_SELECT);
+            case KeyEvent.VK_SPACE -> {
                 machine.speedUp = 1;
                 machine.mute(false);
+            }
         }
     }
 
     public static void mainFunc() throws Exception {
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
-//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
+        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
-        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon crystal.gbc";
+//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon crystal.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg_sound\\rom_singles\\01-registers.gb";
@@ -205,7 +226,6 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg-acid2.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cgb-acid2.gbc";
         Machine machine = new Machine(new File(ROMPath), Machine.MachineMode.GAMEBOY_COLOR);
-//        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
         Screen screen = new Screen(machine);
         screen.keypad = machine.getKeypad();
         machine.attachScreen(screen);
@@ -213,17 +233,11 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
         PcSpeaker speaker = new PcSpeaker();
         machine.attachSpeaker(speaker);
         int[] pal = machine.getDmgPalette();
+        // Totally arbitrary palette
         pal[0] = 0x0000ffff;
         pal[1] = 0x0020b010;
         pal[2] = 0x00400000;
         pal[3] = 0x00000000;
-//        try {
-//            InputStream source = new FileInputStream("D:\\Games\\GBA\\gbtest\\gameboy-test-data\\cpu_tests\\v1\\01.test");
-//            machine.test(source);
-//            source.close();
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
         while(screen.isOpen()){
             machine.cycle();
         }

@@ -4,11 +4,95 @@ package com.funguscow.gb;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Handles memory access, bank switching, and memory mapped IO and registers
  */
 public class MMU {
+
+    public static class GameGenieCode {
+        public int address;
+        public boolean doCheck;
+        public byte checkByte;
+        public byte value;
+
+        public GameGenieCode(int address, boolean doCheck, byte checkByte, byte value) {
+            this.address = address;
+            this.doCheck = doCheck;
+            this.checkByte = checkByte;
+            this.value = value;
+        }
+
+        public GameGenieCode(int address, byte value) {
+            this(address, false, (byte)-1, value);
+        }
+
+        public GameGenieCode(String code) {
+            assert(code.length() == 6 || code.length() == 9);
+            value = (byte)Integer.parseInt(code.substring(0, 2), 16);
+            address = Integer.parseInt(code.substring(2, 5), 16);
+            address |= (Integer.parseInt(code.substring(5, 6), 16) ^ 0xf) << 12;
+            if (code.length() == 6) {
+                doCheck = false;
+            } else {
+                doCheck = true;
+                int check = Integer.parseInt(code.charAt(6) + "" + code.charAt(8), 16);
+                check = (check >> 2) | ((check << 6) & 0xc0);
+                check ^= 0xBA;
+                checkByte = (byte)check;
+            }
+        }
+
+        @Override
+        public int hashCode() {
+            return address + value << 5;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (!(obj instanceof GameGenieCode)) {
+                return false;
+            }
+            GameGenieCode other = (GameGenieCode) obj;
+            return address == other.address && value == other.value && doCheck == other.doCheck && (!doCheck || checkByte == other.checkByte);
+        }
+    }
+
+    public static class GameSharkCode {
+        public int ramBank;
+        public int address;
+        public byte value;
+
+        public GameSharkCode(int ramBank, int address, byte value) {
+            this.ramBank = ramBank;
+            this.address = address;
+            this.value = value;
+        }
+
+        public GameSharkCode(String code) {
+            ramBank = Integer.parseInt(code.substring(0, 2), 16);
+            address = Integer.parseInt(code.substring(4, 6), 16) | (Integer.parseInt(code.substring(6), 16) << 8);
+            value = (byte)Integer.parseInt(code.substring(2, 4), 16);
+        }
+
+        @Override
+        public int hashCode() {
+            return (ramBank << 16) | address + value;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if(!(obj instanceof GameSharkCode)) {
+                return false;
+            }
+            GameSharkCode other = (GameSharkCode) obj;
+            return address == other.address && ramBank == other.ramBank && value == other.value;
+        }
+    }
 
     Machine machine;
     private int ramSize;
@@ -42,6 +126,10 @@ public class MMU {
     private int hdmaRemaining;
     private int hdmaProgress;
     private boolean hdmaActive;
+
+    // Cheats
+    private final Map<Integer, GameGenieCode> gameGenieCodes = new HashMap<>();
+    private final Set<GameSharkCode> gameSharkCodes = new HashSet<>();
 
     /**
      * Initialize according to power up seqeunce
@@ -351,12 +439,81 @@ public class MMU {
         }
     }
 
+    public void onVblank() {
+        for (GameSharkCode code : gameSharkCodes) {
+            if (code.address < 0xC000) {
+                externalRam[(code.ramBank << 13) | (code.address & 0x1fff)] = code.value;
+            } else {
+                internalRam[code.address & 0x1fff] = code.value;
+            }
+        }
+    }
+
+    public void addCode(String code) {
+        String hexOnly = code
+                .chars()
+                .filter(i -> Character.isDigit(i) || (Character.toLowerCase(i) >= 'a' && Character.toLowerCase(i) <= 'f'))
+                .mapToObj(i -> (char)(i))
+                .collect(StringBuffer::new, StringBuffer::append, StringBuffer::append).toString();
+        if (hexOnly.length() == 8) {
+            addCode(new GameSharkCode(hexOnly));
+        } else {
+            addCode(new GameGenieCode(hexOnly));
+        }
+    }
+
+    public void addCode(GameGenieCode code) {
+        int key = code.address;
+        if (code.doCheck) {
+            key |= (code.checkByte & 0xff) << 16;
+        } else {
+            key |= 0xfff0000;
+        }
+        gameGenieCodes.put(key, code);
+    }
+
+    public void addCode(GameSharkCode code) {
+        gameSharkCodes.add(code);
+    }
+
+    public void removeCode(GameGenieCode code) {
+        int key = code.address;
+        if (code.doCheck) {
+            key |= code.checkByte << 16;
+        } else {
+            key |= 0xfff0000;
+        }
+        if (gameGenieCodes.get(key).equals(code)) {
+            gameGenieCodes.remove(key);
+        }
+    }
+
+    public void removeCode(GameSharkCode code) {
+        gameSharkCodes.remove(code);
+    }
+
+    public int read8(int address) {
+        int value = _read8(address);
+        int key = (value << 16) | address;
+        GameGenieCode code = gameGenieCodes.get(key);
+        if (code != null) {
+            value = code.value & 0xff;
+        } else {
+            key = 0xfff0000 | address;
+            code = gameGenieCodes.get(key);
+            if (code != null) {
+                value = code.value & 0xff;
+            }
+        }
+        return value;
+    }
+
     /**
      * Read 1 byte from address
      * @param address Address of byte to read
      * @return The byte at [address]
      */
-    public int read8(int address){
+    public int _read8(int address){
         switch(address >> 13){
             case 0:
                 if(address < 0x100 && !leftBios) {
