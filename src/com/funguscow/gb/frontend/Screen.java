@@ -2,6 +2,7 @@ package com.funguscow.gb.frontend;
 
 import com.funguscow.gb.GPU;
 import com.funguscow.gb.Keypad;
+import com.funguscow.gb.Machine;
 
 import javax.swing.*;
 import java.awt.*;
@@ -11,15 +12,23 @@ import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.awt.image.BufferStrategy;
 import java.awt.image.BufferedImage;
+import java.io.*;
 
 public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
+
+    private static Machine machine;
 
     private final BufferedImage image;
     private BufferStrategy strategy;
     private boolean open = true;
+    private JFrame frame;
     public Keypad keypad;
 
+    private long startTime;
+    private int numFrames;
+
     public Screen(){
+        startTime = System.currentTimeMillis();
         image = new BufferedImage(160, 144, BufferedImage.TYPE_INT_RGB);
     }
 
@@ -28,7 +37,7 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
     }
 
     public void makeContainer(){
-        JFrame frame = new JFrame("Test emulator");
+        frame = new JFrame("Test emulator");
         frame.addWindowListener(new WindowListener() {
             @Override
             public void windowOpened(WindowEvent e) {
@@ -94,6 +103,11 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
         g.drawImage(image, 0, 0, this);
         g.dispose();
         strategy.show();
+        if (++numFrames % 100 == 0) {
+            long passed = System.currentTimeMillis() - startTime;
+            float fps = (numFrames * 1000f) / passed;
+            frame.setTitle(String.format("Fps: %.02f", fps));
+        }
     }
 
 
@@ -123,6 +137,19 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
                 keypad.keyDown(Keypad.KEY_START); break;
             case KeyEvent.VK_D:
                 keypad.keyDown(Keypad.KEY_SELECT); break;
+            case KeyEvent.VK_F1:
+                try (OutputStream os = new FileOutputStream("savestate")) {
+                    machine.saveState(os);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+                break;
+            case KeyEvent.VK_F2:
+                try (InputStream is = new FileInputStream("savestate")) {
+                    machine.loadState(is);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
         }
     }
 
@@ -147,6 +174,53 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
                 keypad.keyUp(Keypad.KEY_START); break;
             case KeyEvent.VK_D:
                 keypad.keyUp(Keypad.KEY_SELECT); break;
+        }
+    }
+
+    public static void mainFunc() throws Exception {
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
+//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
+//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
+        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
+//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon crystal.gbc";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg_sound\\rom_singles\\01-registers.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\oam_bug\\oam_bug.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg-acid2.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\cgb-acid2.gbc";
+        machine = new Machine(new File(ROMPath), Machine.MachineMode.GAMEBOY_COLOR);
+//        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
+        Screen screen = new Screen();
+        screen.keypad = machine.getKeypad();
+        machine.attachScreen(screen);
+        screen.makeContainer();
+        PcSpeaker speaker = new PcSpeaker();
+        machine.attachSpeaker(speaker);
+//        try {
+//            InputStream source = new FileInputStream("D:\\Games\\GBA\\gbtest\\gameboy-test-data\\cpu_tests\\v1\\01.test");
+//            machine.test(source);
+//            source.close();
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+        while(screen.isOpen()){
+            machine.cycle();
+        }
+        try {
+            machine.saveExternal();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        System.out.println("Stopped");
+    }
+
+    public static void main(String[] args) {
+        try {
+            mainFunc();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }

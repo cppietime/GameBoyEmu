@@ -1,5 +1,13 @@
 package com.funguscow.gb;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
+/**
+ * The APU to play sounds
+ */
 public class SoundBoard {
 
     private static final int BUFFER_SIZE = 2048;
@@ -142,6 +150,8 @@ public class SoundBoard {
     private int cycleCounter;
     private int bufferPtr;
 
+    public boolean silent;
+
     public SoundBoard(int bufferSize) {
         this.bufferSize = bufferSize;
     }
@@ -150,6 +160,10 @@ public class SoundBoard {
         this(BUFFER_SIZE);
     }
 
+    /**
+     * Attach a speaker to this APU
+     * @param speaker Speaker
+     */
     public void setSpeaker(Speaker speaker) {
         this.speaker = speaker;
         leftBuffer = rightBuffer = null;
@@ -164,6 +178,11 @@ public class SoundBoard {
         }
     }
 
+    /**
+     *
+     * @param address Address to read
+     * @return Read value
+     */
     public int read(int address){
         int value = 0;
         switch (address - 0xFF10) {
@@ -249,6 +268,11 @@ public class SoundBoard {
         return value;
     }
 
+    /**
+     *
+     * @param address Address to write
+     * @param value Value to write
+     */
     public void write(int address, int value){
         switch (address - 0xFF10) {
             case 0x0:
@@ -390,6 +414,10 @@ public class SoundBoard {
         }
     }
 
+    /**
+     * Increment the internal timer and update values
+     * @param cycles Number of cycles since last call to this method
+     */
     private void incrementTimer(int cycles) {
         while (cycles > 0) {
             cycleCounter++;
@@ -468,6 +496,10 @@ public class SoundBoard {
         }
     }
 
+    /**
+     *
+     * @return Current output of channel 1
+     */
     private int channel1() {
         if (!enable1 || length1 <= 0 || envelope1 == 0)
             return 0;
@@ -475,6 +507,10 @@ public class SoundBoard {
         return (s * envelope1) >> 4;
     }
 
+    /**
+     *
+     * @return Current output of channel 2
+     */
     private int channel2() {
         if (!enable2 || length2 <= 0 || envelope2 == 0)
             return 0;
@@ -482,6 +518,10 @@ public class SoundBoard {
         return (s * envelope2) >> 4;
     }
 
+    /**
+     *
+     * @return Current output of channel 3
+     */
     private int channel3() {
         if (!enable3 || !on3 || volume3 == 0)
             return 0;
@@ -493,12 +533,19 @@ public class SoundBoard {
         return b << (3 - volume3);
     }
 
+    /**
+     *
+     * @return Current output of channel 4
+     */
     private int channel4() {
         if (!enable4 || length4 <= 0 || envelope4 == 0)
             return 0;
         return (((~lfsr4) & 1) * 63 * envelope4) >> 4;
     }
 
+    /**
+     * Write one sample to the speaker
+     */
     private void writeSample() {
         int c1 = channel1();
         int c2 = channel2();
@@ -536,7 +583,7 @@ public class SoundBoard {
      */
     public void step(int cycles, int timeDivisor, boolean doubleSpeed) {
         incrementTimer(cycles);
-        if (speaker == null) {
+        if (speaker == null || silent) {
             return;
         }
         latentCycles += (long) cycles * format.sampleRate;
@@ -552,6 +599,141 @@ public class SoundBoard {
                 speaker.consume(leftBuffer, rightBuffer, bufferSize);
             }
         }
+    }
+
+    /**
+     * Save state of the APU
+     * @param dos Dest stream
+     * @throws IOException Errors writing
+     */
+    public void save(DataOutputStream dos) throws IOException {
+        dos.write("APU ".getBytes(StandardCharsets.UTF_8));
+        dos.writeLong(latentCycles);
+        dos.writeInt(sweepFrequency1);
+        dos.writeBoolean(sweepAscending1);
+        dos.writeInt(sweepShift1);
+        dos.writeInt(sweepCounter1);
+        dos.writeInt(duty1);
+        dos.writeInt(length1);
+        dos.writeInt(waveCounter1);
+        dos.writeInt(initialEnvelope1);
+        dos.writeInt(envelope1);
+        dos.writeBoolean(envelopeAscending1);
+        dos.writeInt(envelopeSweep1);
+        dos.writeInt(envelopeCounter1);
+        dos.writeInt(initialFrequencyDivisor1);
+        dos.writeInt(frequencyDivisor1);
+        dos.writeInt(frequencyCounter1);
+        dos.writeBoolean(useLength1);
+        dos.writeBoolean(enable1);
+        dos.writeInt(duty2);
+        dos.writeInt(length2);
+        dos.writeInt(initialEnvelope2);
+        dos.writeInt(envelope2);
+        dos.writeBoolean(envelopeAscending2);
+        dos.writeInt(envelopeSweep2);
+        dos.writeInt(envelopeCounter2);
+        dos.writeInt(frequencyDivisor2);
+        dos.writeInt(frequencyCounter2);
+        dos.writeBoolean(useLength2);
+        dos.writeBoolean(enable2);
+        dos.writeBoolean(on3);
+        dos.writeInt(length3);
+        dos.writeInt(volume3);
+        dos.writeInt(frequencyDivisor3);
+        dos.writeInt(frequencyCounter3);
+        dos.writeBoolean(useLength3);
+        dos.writeBoolean(enable3);
+        dos.write(waveform);
+        dos.writeInt(wavePtr);
+        dos.writeInt(length4);
+        dos.writeInt(initialEnvelope4);
+        dos.writeInt(envelope4);
+        dos.writeBoolean(envelopeAscending4);
+        dos.writeInt(envelopeSweep4);
+        dos.writeInt(envelopeCounter4);
+        dos.writeInt(frequencyShift4);
+        dos.writeBoolean(lowBitWidth4);
+        dos.writeInt(frequencyDivisor4);
+        dos.writeInt(frequencyCounter4);
+        dos.writeBoolean(useLength4);
+        dos.writeBoolean(enable4);
+        dos.writeInt(lfsr4);
+        dos.writeBoolean(vinLeft);
+        dos.writeBoolean(vinRight);
+        dos.writeInt(volumeLeft);
+        dos.writeInt(volumeRight);
+        dos.writeInt(mapLeft);
+        dos.writeInt(mapRight);
+        dos.writeBoolean(masterEnable);
+        dos.writeInt(cycleCounter);
+    }
+
+    /**
+     * Load the APU state
+     * @param dis Source stream
+     * @throws IOException Errors reading
+     */
+    public void load(DataInputStream dis) throws IOException {
+        latentCycles = dis.readLong();
+        sweepFrequency1 = dis.readInt();
+        sweepAscending1 = dis.readBoolean();
+        sweepShift1 = dis.readInt();
+        sweepCounter1 = dis.readInt();
+        duty1 = dis.readInt();
+        length1 = dis.readInt();
+        waveCounter1 = dis.readInt();
+        initialEnvelope1 = dis.readInt();
+        envelope1 = dis.readInt();
+        envelopeAscending1 = dis.readBoolean();
+        envelopeSweep1 = dis.readInt();
+        envelopeCounter1 = dis.readInt();
+        initialFrequencyDivisor1 = dis.readInt();
+        frequencyDivisor1 = dis.readInt();
+        frequencyCounter1 = dis.readInt();
+        useLength1 = dis.readBoolean();
+        enable1 = dis.readBoolean();
+        duty2 = dis.readInt();
+        length2 = dis.readInt();
+        initialEnvelope2 = dis.readInt();
+        envelope2 = dis.readInt();
+        envelopeAscending2 = dis.readBoolean();
+        envelopeSweep2 = dis.readInt();
+        envelopeCounter2 = dis.readInt();
+        frequencyDivisor2 = dis.readInt();
+        frequencyCounter2 = dis.readInt();
+        useLength2 = dis.readBoolean();
+        enable2 = dis.readBoolean();
+        on3 = dis.readBoolean();
+        length3 = dis.readInt();
+        volume3 = dis.readInt();
+        frequencyDivisor3 = dis.readInt();
+        frequencyCounter3 = dis.readInt();
+        useLength3 = dis.readBoolean();
+        enable3 = dis.readBoolean();
+        dis.read(waveform);
+        wavePtr = dis.readInt();
+        length4 = dis.readInt();
+        initialEnvelope4 = dis.readInt();
+        envelope4 = dis.readInt();
+        envelopeAscending4 = dis.readBoolean();
+        envelopeSweep4 = dis.readInt();
+        envelopeCounter4 = dis.readInt();
+        frequencyShift4 = dis.readInt();
+        lowBitWidth4 = dis.readBoolean();
+        frequencyDivisor4 = dis.readInt();
+        frequencyCounter4 = dis.readInt();
+        useLength4 = dis.readBoolean();
+        enable4 = dis.readBoolean();
+        lfsr4 = dis.readInt();
+        vinLeft = dis.readBoolean();
+        vinRight = dis.readBoolean();
+        volumeLeft = dis.readInt();
+        volumeRight = dis.readInt();
+        mapLeft = dis.readInt();
+        mapRight = dis.readInt();
+        masterEnable = dis.readBoolean();
+        cycleCounter = dis.readInt();
     }
 
 }

@@ -2,9 +2,8 @@
 
 package com.funguscow.gb;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Handles memory access, bank switching, and memory mapped IO and registers
@@ -26,6 +25,7 @@ public class MMU {
     private boolean ramEnabled;
     private int mbc3RtcRegister;
     private int mbc3RtcLatch;
+    private long mbc3LastTime;
     private int seconds;
     private int minutes;
     private int hours;
@@ -86,6 +86,7 @@ public class MMU {
         write8(0xfffa, 0);
         write8(0xff4b, 0);
         write8(0xffff, 0);
+        mbc3LastTime = System.currentTimeMillis();
         System.out.println(ramSize + " byte of RAM across " + numRamBanks + " banks");
         System.out.println(numRomBanks + " banks of ROM using MBC #" + mbcType);
     }
@@ -154,6 +155,202 @@ public class MMU {
         RAM.write(externalRam, offset, len);
     }
 
+    public void saveERam(DataOutputStream dos) throws IOException {
+        dos.write("ERAM".getBytes(StandardCharsets.UTF_8));
+        dos.writeInt(externalRam.length);
+        dos.write(externalRam);
+    }
+
+    public void loadERam(DataInputStream dis) throws IOException {
+        int saveRamSize = dis.readInt();
+        if (saveRamSize != ramSize) {
+            throw new IOException("External RAM sizes do not match");
+        }
+        dis.read(externalRam);
+    }
+
+    public void saveWRam(DataOutputStream dos) throws IOException {
+        dos.write("WRAM".getBytes(StandardCharsets.UTF_8));
+        dos.writeInt(internalRam.length);
+        dos.write(internalRam);
+    }
+
+    public void loadWRam(DataInputStream dis) throws IOException {
+        int size = dis.readInt();
+        if (size != internalRam.length) {
+            throw new IOException("Internal RAM sizes do not match");
+        }
+        dis.read(internalRam);
+    }
+
+    public void saveHRam(DataOutputStream dos) throws IOException {
+        dos.write("HRAM".getBytes(StandardCharsets.UTF_8));
+        dos.write(zeroPage);
+    }
+
+    public void loadHRam(DataInputStream dis) throws IOException {
+        dis.read(zeroPage);
+    }
+
+    public void saveRTC(DataOutputStream dos) throws IOException {
+        dos.write("RTC ".getBytes(StandardCharsets.UTF_8));
+        dos.writeInt(days);
+        dos.writeInt(hours);
+        dos.writeInt(minutes);
+        dos.writeInt(seconds);
+        dos.writeLong(mbc3LastTime);
+        dos.writeByte(mbc3RtcRegister);
+        dos.writeByte(mbc3RtcLatch);
+        dos.writeBoolean(mbc3HaltRtc);
+        dos.writeBoolean(mbc3DaysOverflow);
+    }
+
+    public void loadRTC(DataInputStream dis) throws IOException {
+        days = dis.readInt();
+        hours = dis.readInt();
+        minutes = dis.readInt();
+        seconds = dis.readInt();
+        mbc3LastTime = dis.readLong();
+        mbc3RtcRegister = dis.readByte() & 0xff;
+        mbc3RtcLatch = dis.readByte() & 0xff;
+        mbc3HaltRtc = dis.readBoolean();
+        mbc3DaysOverflow = dis.readBoolean();
+    }
+
+    public void saveRegisters(DataOutputStream dos) throws IOException {
+        dos.write("MEMR".getBytes(StandardCharsets.UTF_8));
+        dos.writeInt(ramSize);
+        dos.writeInt(numRomBanks);
+        dos.writeInt(numRamBanks);
+        dos.writeInt(mbcType);
+        dos.writeBoolean(cgb);
+        dos.writeInt(romBank);
+        dos.writeInt(ramBank);
+        dos.writeBoolean(mbc1BankMode);
+        dos.writeBoolean(ramEnabled);
+        dos.writeBoolean(leftBios);
+        if (cgb) {
+            dos.writeInt(wramBank);
+            dos.writeBoolean(pendingSpeedSwitch);
+            dos.writeInt(hdmaSource);
+            dos.writeInt(hdmaDest);
+            dos.writeInt(hdmaRemaining);
+            dos.writeInt(hdmaProgress);
+            dos.writeBoolean(hdmaActive);
+        }
+    }
+
+    public void loadRegisters(DataInputStream dis) throws IOException {
+        if (ramSize != dis.readInt()) {
+            throw new IOException("External RAM sizes do not match");
+        }
+        if (numRomBanks != dis.readInt()) {
+            throw new IOException("ROM sizes do not match");
+        }
+        if (numRamBanks != dis.readInt()) {
+            throw new IOException("Number of RAM banks do not match");
+        }
+        if (mbcType != dis.readInt()) {
+            throw new IOException("MBC types do not match");
+        }
+        if (cgb != dis.readBoolean()) {
+            throw new IOException("Color modes do not match");
+        }
+        romBank = dis.readInt();
+        ramBank = dis.readInt();
+        mbc1BankMode = dis.readBoolean();
+        ramEnabled = dis.readBoolean();
+        leftBios = dis.readBoolean();
+        if (cgb) {
+            wramBank = Math.max(1, dis.readInt());
+            pendingSpeedSwitch = dis.readBoolean();
+            hdmaSource = dis.readInt();
+            hdmaDest = dis.readInt();
+            hdmaRemaining = dis.readInt();
+            hdmaProgress = dis.readInt();
+            hdmaActive = dis.readBoolean();
+        }
+    }
+
+    public void saveExternal(DataOutputStream dos) throws IOException {
+        if (ramSize > 0) {
+            saveERam(dos);
+        }
+        if (mbcType == 3) {
+            saveRTC(dos);
+        }
+        dos.write("end ".getBytes(StandardCharsets.UTF_8));
+    }
+
+    public void loadExternal(DataInputStream dis) throws IOException {
+        byte[] buffer = new byte[4];
+        boolean reading = true;
+        while (reading) {
+            if (dis.read(buffer) < 4) {
+                break;
+            }
+            String key = new String(buffer, StandardCharsets.UTF_8);
+            switch (key) {
+                case "end ":
+                    reading = false;
+                    break;
+                case "ERAM":
+                    loadERam(dis);
+                    break;
+                case "RTC ":
+                    loadRTC(dis);
+                    break;
+                default:
+                    throw new IOException(String.format("Invalid identifier %s", key));
+            }
+        }
+    }
+
+    public void saveState(DataOutputStream dos) throws IOException {
+        dos.write("MMU ".getBytes(StandardCharsets.UTF_8));
+        if (ramSize > 0) {
+            saveERam(dos);
+        }
+        saveWRam(dos);
+        saveHRam(dos);
+        if (mbcType == 3) {
+            saveRTC(dos);
+        }
+        saveRegisters(dos);
+        dos.write("end ".getBytes(StandardCharsets.UTF_8));
+    }
+
+    public void loadState(DataInputStream dis) throws IOException {
+        byte[] buffer = new byte[4];
+        boolean running = true;
+        while (running) {
+            dis.read(buffer);
+            String key = new String(buffer, StandardCharsets.UTF_8);
+            switch(key) {
+                case "end ":
+                    running = false;
+                    break;
+                case "ERAM":
+                    loadERam(dis);
+                    break;
+                case "WRAM":
+                    loadWRam(dis);
+                    break;
+                case "HRAM":
+                    loadHRam(dis);
+                    break;
+                case "RTC ":
+                    loadRTC(dis);
+                    break;
+                case "MEMR":
+                    loadRegisters(dis);
+                    break;
+                default:
+                    throw new IOException(String.format("Invalid identifier %s", key));
+            }
+        }
+    }
+
     /**
      * Directly transfer memory from ROM/RAM to OAM
      * @param base Base address for DMA
@@ -169,10 +366,8 @@ public class MMU {
             hdmaRemaining = (size + 1) << 4;
             hdmaProgress = 0;
             hdmaActive = true;
-            System.out.printf("Hblank transfer from %x to %x x %x\n", hdmaSource, hdmaDest, hdmaRemaining);
         } else {
             size = (size + 1) << 4;
-            System.out.printf("Immediate transfer from %x to %x x %x\n", hdmaSource, hdmaDest, size);
             for (int i = 0; i < size; i++) {
                 int src = read8(hdmaSource + i);
                 write8(0x8000 + hdmaDest + i, src);
@@ -180,6 +375,9 @@ public class MMU {
         }
     }
 
+    /**
+     * Called on start of HBlank for HDMA
+     */
     public void onHblank() {
         if (!hdmaActive) {
             return;
@@ -553,6 +751,9 @@ public class MMU {
                 }
                 else if (address == 0xff70 && cgb) {
                     wramBank = value & 7;
+                    if (wramBank == 0) {
+                        wramBank = 1;
+                    }
                 }
                 else if(address < 0xff80) {} // Unusable
                 else if(address == 0xffff){ // Interrupt enable register
@@ -573,6 +774,47 @@ public class MMU {
     public void write16(int address, int value){
         write8(address, value & 0xff);
         write8(address + 1, value >> 8);
+    }
+
+    /**
+     * Increments the RTC, if any
+     */
+    public void incrementRtc() {
+        if (mbcType != 3 || (mbc3RtcLatch & 2) == 2) {
+            return;
+        }
+        if (mbc3HaltRtc) {
+            mbc3LastTime = System.currentTimeMillis();
+            return;
+        }
+        long passed = System.currentTimeMillis() - mbc3LastTime;
+        if (passed >= 1000) {
+            int secondsDelta = (int) (passed / 1000);
+            seconds += secondsDelta;
+            mbc3LastTime += secondsDelta * 1000L;
+            minutes += seconds / 60;
+            seconds %= 60;
+            hours += minutes / 60;
+            minutes %= 60;
+            days += hours / 24;
+            hours %= 24;
+            if (days > 511) {
+                mbc3DaysOverflow = true;
+                days &= 511;
+            }
+        }
+    }
+
+    /**
+     * Print full debug state
+     */
+    public void printDebugState() {
+        System.out.printf("0x%x ROM banks, 0x%x external RAM banks\nROM bank #0x%x, RAM bank #0x%x\n", numRomBanks, numRamBanks, romBank, ramBank);
+        System.out.printf("Mbc1 bank mode? %s, Ram on? %s, RTC register 0x%x, RTC latch 0x%x, RTC halt %s", mbc1BankMode, ramEnabled, mbc3RtcRegister, mbc3RtcLatch, mbc3HaltRtc);
+        System.out.printf("RTC: %d:%02d:%02d:%02d, overflow? %s\n", days, hours, minutes, seconds, mbc3DaysOverflow);
+        System.out.printf("Left bios? %s\n", leftBios);
+        System.out.printf("WRAM bank #0x%x, Upcoming speed switch? %s\n", wramBank, pendingSpeedSwitch);
+        System.out.printf("HDMA? %s from 0x%x to 0x%x (0x%x / 0x%x)\n", hdmaActive, hdmaSource, hdmaDest, hdmaProgress, hdmaRemaining);
     }
 
 }

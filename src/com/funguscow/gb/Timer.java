@@ -1,5 +1,10 @@
 package com.funguscow.gb;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
 /**
  * Timer component
  */
@@ -7,6 +12,8 @@ public class Timer {
 
     // NOTE: Allegedly, the divider is actually in m-cycles, not t-cycles,
     // hence why the bit counts are off-by-2
+
+    // Accessed in initialization
     int divider;
     private int tima;
     private int tma;
@@ -30,7 +37,7 @@ public class Timer {
      * Advance the timer by cycles m-cycles
      * @param cycles m-cycles to advance
      */
-    public void incr(int cycles){
+    public void increment(int cycles){
         for (int i = 0; i < cycles; i++) {
             if (pendingOverflow) {
                 tima = tma;
@@ -42,6 +49,9 @@ public class Timer {
         }
     }
 
+    /**
+     * Trigger an interrupt if the right bits are flipped
+     */
     private void updateEdge() {
         boolean bit = (divider & (1 << DIV_BIT[tac & 3])) != 0;
         bit &= (tac & 4) != 0;
@@ -55,6 +65,11 @@ public class Timer {
         delayed = bit;
     }
 
+    /**
+     *
+     * @param address Address to read
+     * @return Read value
+     */
     public int read(int address){
         switch(address){ // Already &3'd
             case 0:
@@ -69,6 +84,11 @@ public class Timer {
         return 0;
     }
 
+    /**
+     *
+     * @param address Address to write
+     * @param value Value to write
+     */
     public void write(int address, int value){
         switch(address) { // ibid
             case 0:
@@ -83,6 +103,43 @@ public class Timer {
                 tac = value; break;
         }
         updateEdge();
+    }
+
+    /**
+     * Save Timer state
+     * @param dos Dest stream
+     * @throws IOException Errors writing
+     */
+    public void save(DataOutputStream dos) throws IOException {
+        dos.write("TIME".getBytes(StandardCharsets.UTF_8));
+        dos.writeInt(divider);
+        dos.writeInt(tima);
+        dos.writeInt(tma);
+        dos.writeInt(tac);
+        dos.writeBoolean(delayed);
+        dos.writeBoolean(pendingOverflow);
+    }
+
+    /**
+     * Load timer state
+     * @param dis Source stream
+     * @throws IOException Errors reading
+     */
+    public void load(DataInputStream dis) throws IOException {
+        divider = dis.readInt();
+        tima = dis.readInt();
+        tma = dis.readInt();
+        tac = dis.readInt();
+        delayed = dis.readBoolean();
+        pendingOverflow = dis.readBoolean();
+    }
+
+    /**
+     * Print debug state of timer
+     */
+    public void printDebugState() {
+        System.out.printf("DIV: 0x%x, TIMA: 0x%x, TMA: 0x%x, TAC: 0x%x\n", divider, tima, tma, tac);
+        System.out.printf("Last latch? %s, overflow processing? %s\n", delayed, pendingOverflow);
     }
 
 }

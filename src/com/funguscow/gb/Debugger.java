@@ -4,6 +4,9 @@ import java.util.HashSet;
 import java.util.Scanner;
 import java.util.Set;
 
+/**
+ * Debugger for GB emulator
+ */
 public class Debugger {
 
     private final Scanner scanner;

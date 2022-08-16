@@ -1,9 +1,9 @@
 package com.funguscow.gb;
 
-import com.funguscow.gb.frontend.PcSpeaker;
 import com.funguscow.gb.frontend.Screen;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -11,8 +11,23 @@ import java.util.List;
  */
 public class Machine {
 
+    /**
+     * Thrown for exceptions in ROM file processing
+     */
+    public static class RomException extends Exception {
+        public RomException(Exception e) {
+            super(e);
+        }
+        public RomException(String msg) {
+            super(msg);
+        }
+    }
+
     public static final int[] RAM_SIZES = {0, 1 << 11, 1 << 13, 1 << 15, 1 << 17};
 
+    /**
+     * Specifies color mode and BIOS
+     */
     public enum MachineMode{
         GAMEBOY(1, false, BootRoms.BIOS_DMG),
         GAMEBOY_POCKET(1, false, BootRoms.BIOS_DMG),
@@ -29,6 +44,7 @@ public class Machine {
         }
     }
 
+    // All these things are accessed by each other
     CPU cpu;
     MMU mmu;
     GPU gpu;
@@ -50,37 +66,67 @@ public class Machine {
 
     MachineMode mode;
 
+    File saveFile;
+
     // CGB stuff
     boolean doubleSpeed;
-    boolean usingColor;
+    private boolean usingColor;
+    private boolean monochromeCompatibility;
+
+    private String baseNamePath;
+
+    private static String saveExtension(File ROM) {
+        String romPath = ROM.getPath();
+        int dot = romPath.lastIndexOf('.');
+        String savePath;
+        if (dot == -1) {
+            savePath = romPath + ".ram";
+        } else {
+            savePath = romPath.substring(0, dot) + ".ram";
+        }
+        return savePath;
+    }
 
     /**
-     * Load a ROM file
-     * @param ROM File containing ROM
+     * Create a machine with a loaded ROM
+     * @param ROM ROM file
+     * @param mode Machine mode to boot into
      */
-    public Machine(File ROM, MachineMode mode){
+    public Machine(File ROM, MachineMode mode) throws RomException {
+        this(ROM, mode, new File(saveExtension(ROM)));
+    }
+
+    /**
+     * Create a machine with a loaded ROM
+     * @param ROM ROM file
+     * @param mode Machine mode to boot into
+     * @param saveFile File to save external RAM to (or NULL)
+     */
+    public Machine(File ROM, MachineMode mode, File saveFile) throws RomException {
+        baseNamePath = saveFile.getPath();
         timer = new Timer(this);
-        keypad = new Keypad();
-        keypad.machine = this;
+        keypad = new Keypad(this);
         soundBoard = new SoundBoard(); // Not yet used
+        this.saveFile = saveFile;
         this.mode = mode;
         byte[] header = new byte[0x150];
-        try{
-            FileInputStream fis = new FileInputStream(ROM);
+        try (FileInputStream fis = new FileInputStream(ROM)) {
             // Get the header information of the ROM and use it to determine MBC type, RAM/ROM size
             int read = fis.read(header, 0, 0x150);
-            if(read < 0x150)
-                throw new Exception("ROM file too small to be valid!");
+            if(read < 0x150) {
+                throw new RomException("ROM file too small to be valid!");
+            }
             int cartridgeType = header[0x147] & 0xff;
             int colorMode = header[0x143] & 0xff;
-            usingColor = (mode.isCgb && (colorMode & 0x80) != 0xff && (colorMode & 0x6) == 0);
+            usingColor = (mode.isCgb && (colorMode & 0x6) == 0);
+            monochromeCompatibility = usingColor && (colorMode & 0x80) == 0;
             int mbc = 0;
             int romBanks;
             int ramSize = 0;
             if(header[0x149] != 0){
                 ramSize = RAM_SIZES[header[0x149]];
             }
-            System.out.printf("Cartridge type = %02x, ramkey = %02x, Color? %s\n", cartridgeType, header[0x149], usingColor);
+            System.out.printf("Cartridge type = %02x, ramkey = %02x, Color? %s (Compatibility? %s)\n", cartridgeType, header[0x149], usingColor, monochromeCompatibility);
             switch(cartridgeType){
                 case 0:
                     ramSize = 0; break;
@@ -119,24 +165,37 @@ public class Machine {
                     romBanks = 96; break;
             }
             // Create the memory component
-            gpu = new GPU(this, usingColor);
+            gpu = new GPU(this, usingColor, monochromeCompatibility);
             mmu = new MMU(this, mbc, romBanks, (ramSize + 0x1fff) >> 13, ramSize, usingColor);
             // Load this ROM file into it
             mmu.loadRom(header, 0, 0x150);
             mmu.loadRom(fis,  0x150, (romBanks << 14) - 0x150);
-            fis.close();
+            try {
+                loadExternal();
+            } catch (RomException re) {
+                System.err.println("Could not load save file: ");
+                re.printStackTrace();
+            }
         }catch(Exception e){
-            e.printStackTrace();
-            System.exit(3);
+            throw new RomException(e);
         }
-        Logger logger = null;//new Logger("log.txt");
-        cpu = new CPU(mode, mmu, null, logger);
+        cpu = new CPU(mode, mmu, null, null, true);
+    }
+
+    /**
+     *
+     * @return A base path that can be used for save states, based on the
+     * path of the ROM loaded
+     */
+    public String getBaseNamePath() {
+        return baseNamePath;
     }
 
     /**
      * Load up the saved external RAM
      * @param RAM File containing literal binary data of external RAM state
      */
+    @Deprecated
     public void loadRAM(File RAM) {
         try {
             InputStream is = new FileInputStream(RAM);
@@ -147,6 +206,10 @@ public class Machine {
         }
     }
 
+    /**
+     *
+     * @return true if speed switch succeeded
+     */
     public boolean trySpeedSwitch() {
         if (usingColor) {
             doubleSpeed = !doubleSpeed;
@@ -160,6 +223,10 @@ public class Machine {
      * Perform one instruction cycle
      */
     public void cycle(){
+        if (cpu.pc == 0x100) {
+            printDebugState();
+        }
+
         while (stop) {
             try {
                 Thread.sleep(16);
@@ -169,8 +236,25 @@ public class Machine {
         }
         int mCycles = cpu.performOp(this); // Execute an opcode after checking for interrupts
         gpu.increment(mCycles); // Increment the GPU's state
-        timer.incr(mCycles); // Increment the timer's state
+        timer.increment(mCycles); // Increment the timer's state
         soundBoard.step(mCycles, speedUp, doubleSpeed);
+        mmu.incrementRtc();
+    }
+
+    /**
+     * Used for debugging, prints state info
+     */
+    public void printDebugState() {
+        System.out.printf("Halt? %s, Stop? %s, Double Speed? %s\n", halt, stop, doubleSpeed);
+        System.out.printf("Interrupts - enabled: 0x%08x, fired: 0x%08x\n", interruptsEnabled, interruptsFired);
+        System.out.println("\nCPU:");
+        cpu.dumpRegisters();
+        System.out.println("\nMMU:");
+        mmu.printDebugState();
+        System.out.println("\nGPU:");
+        gpu.printDebugState();
+        System.out.println("\nTimer:");
+        timer.printDebugState();
     }
 
     /**
@@ -192,44 +276,190 @@ public class Machine {
         }
     }
 
-    public static void main(String[] args){
-//        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
-//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
-//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
-        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
-//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon crystal.gbc";
-//        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
-//        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
-//        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg_sound\\rom_singles\\01-registers.gb";
-//        String ROMPath = "D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb";
-//        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg-acid2.gb";
-//        String ROMPath = "D:\\Games\\GBA\\gbtest\\cgb-acid2.gbc";
-        Machine machine = new Machine(new File(ROMPath), MachineMode.GAMEBOY_COLOR);
-//        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
-        Screen screen = new Screen();
-        screen.keypad = machine.keypad;
-        machine.gpu.screen = screen;
-        screen.makeContainer();
-        PcSpeaker speaker = new PcSpeaker();
-        machine.soundBoard.setSpeaker(speaker);
-//        try {
-//            InputStream source = new FileInputStream("D:\\Games\\GBA\\gbtest\\gameboy-test-data\\cpu_tests\\v1\\01.test");
-//            machine.test(source);
-//            source.close();
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
-        while(screen.isOpen()){
-            machine.cycle();
+    /**
+     *
+     * @param screen Screen to attach to the GPU
+     */
+    public void attachScreen(Screen screen) {
+        this.gpu.screen = screen;
+    }
+
+    /**
+     *
+     * @param speaker Speaker to attach to the SoundBoard
+     */
+    public void attachSpeaker(SoundBoard.Speaker speaker) {
+        soundBoard.speaker = speaker;
+        soundBoard.setSpeaker(speaker);
+    }
+
+    /**
+     *
+     * @return The attached keypad
+     */
+    public Keypad getKeypad() {
+        return keypad;
+    }
+
+    /**
+     * Sets the mute status of the SoundBoard
+     * @param muted True if the SoundBoard should be muted
+     */
+    public void mute(boolean muted) {
+        this.soundBoard.silent = muted;
+    }
+
+    /**
+     * Save the machine state
+     * @param os Destination stream
+     * @throws RomException Error writing state
+     */
+    public void saveState(OutputStream os) throws RomException {
+        try (DataOutputStream dos = new DataOutputStream(os)) {
+            dos.write("STAT".getBytes(StandardCharsets.UTF_8));
+            dos.writeBoolean(usingColor);
+            dos.writeBoolean(monochromeCompatibility);
+            dos.writeBoolean(halt);
+            dos.writeBoolean(stop);
+            dos.writeInt(interruptsEnabled);
+            dos.writeInt(interruptsFired);
+            dos.writeBoolean(doubleSpeed);
+            cpu.save(dos);
+            mmu.saveState(dos);
+            gpu.save(dos);
+            timer.save(dos);
+            keypad.save(dos);
+            soundBoard.save(dos);
+            dos.write("end ".getBytes(StandardCharsets.UTF_8));
+            dos.flush();
+        } catch (Exception e) {
+            throw new RomException(e);
         }
-//        try {
-//            OutputStream os = new FileOutputStream("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram");
-//            machine.mmu.save_RAM(os, 0, machine.mmu.external_ram.length);
-//            os.close();
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
-        System.out.println("Stopped");
+    }
+
+    /**
+     * Load machine state
+     * @param is Source stream
+     * @throws RomException Error reading state
+     */
+    public void loadState(InputStream is) throws RomException {
+        try (DataInputStream dis = new DataInputStream(is)) {
+            byte[] buffer = new byte[4];
+            dis.read(buffer);
+            String key = new String(buffer, StandardCharsets.UTF_8);
+            if (!key.equals("STAT")) {
+                throw new RomException("Not a state file");
+            }
+            if (usingColor != dis.readBoolean()) {
+                throw new RomException("Color modes do not match");
+            }
+            if (monochromeCompatibility != dis.readBoolean()) {
+                throw new RomException("Compatibility modes do not match");
+            }
+            halt = dis.readBoolean();
+            stop = dis.readBoolean();
+            interruptsEnabled = dis.readInt();
+            interruptsFired = dis.readInt();
+            doubleSpeed = dis.readBoolean();
+            boolean reading = true;
+            while (reading) {
+                if (dis.read(buffer) < 4) {
+                    break;
+                }
+                key = new String(buffer, StandardCharsets.UTF_8);
+                switch (key) {
+                    case "end ":
+                        reading = false;
+                        break;
+                    case "MMU ":
+                        mmu.loadState(dis);
+                        break;
+                    case "CPU ":
+                        cpu.load(dis);
+                        break;
+                    case "GPU ":
+                        gpu.load(dis);
+                        break;
+                    case "TIME":
+                        timer.load(dis);
+                        break;
+                    case "APU ":
+                        soundBoard.load(dis);
+                        break;
+                    case "JOYP":
+                        keypad.load(dis);
+                        break;
+                    default:
+                        throw new RomException(String.format("Unidentified key %s", key));
+                }
+            }
+        } catch (Exception e) {
+            throw new RomException(e);
+        }
+    }
+
+    /**
+     * Save external RAM (e.g. save file)
+     * @param os Destination stream
+     * @throws RomException Error writing save
+     */
+    public void saveExternal(OutputStream os) throws RomException {
+        try (DataOutputStream dos = new DataOutputStream(os)) {
+            dos.write("SAVE".getBytes(StandardCharsets.UTF_8));
+            mmu.saveExternal(dos);
+            dos.flush();
+        } catch (Exception e) {
+            throw new RomException(e);
+        }
+    }
+
+    /**
+     * Load external RAM (e.g. save file)
+     * @param is Source stream
+     * @throws RomException Error reading save
+     */
+    public void loadExternal(InputStream is) throws RomException {
+        try (DataInputStream dis = new DataInputStream(is)) {
+            byte[] buffer = new byte[4];
+            dis.read(buffer);
+            String key = new String(buffer, StandardCharsets.UTF_8);
+            if(!key.equals("SAVE")) {
+                throw new RomException(String.format("Bad key: %s, Not a save file", key));
+            }
+            mmu.loadExternal(dis);
+        } catch (Exception e) {
+            throw new RomException(e);
+        }
+    }
+
+    /**
+     * Save state to default save file
+     * @throws RomException Errors writing save
+     */
+    public void saveExternal() throws RomException {
+        if (saveFile == null) {
+            throw new IllegalStateException("No save file specified");
+        }
+        try (OutputStream os = new FileOutputStream(saveFile)) {
+            saveExternal(os);
+        } catch (Exception e) {
+            throw new RomException(e);
+        }
+    }
+
+    /**
+     * Loads save from default file
+     * @throws RomException Errors reading save
+     */
+    public void loadExternal() throws RomException {
+        if (saveFile == null || !saveFile.isFile()) {
+            throw new RomException("No save file specified");
+        }
+        try (InputStream is = new FileInputStream(saveFile)) {
+            loadExternal(is);
+        } catch (Exception e) {
+            throw new RomException(e);
+        }
     }
 
 }

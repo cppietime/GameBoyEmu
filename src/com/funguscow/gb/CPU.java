@@ -1,26 +1,43 @@
 package com.funguscow.gb;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Set;
 
+/**
+ * An emulator of the z80 based CPU of the gameboy
+ */
 public class CPU {
 
-    int m, mDelta;
+    private int m, mDelta;
 
+    // Checked in OpcodeTest, Debugger, and Logger
     int a, b, c, d, e, h, l;
     int pc, sp;
-    boolean zero, carry, half, subtract;
-    boolean interrupts = false;
-    boolean haltBug = false;
 
-    int lastInt = 0;
+    private boolean zero, carry, half, subtract;
+    private boolean interrupts = false;
+    private boolean haltBug = false;
 
-    Debugger debugger;
-    Logger logger;
+    private int lastInt = 0;
+
+    private Debugger debugger;
+    private Logger logger;
 
     MMU mmu;
 
-    public CPU(Machine.MachineMode mode, MMU mmu, Debugger debugger, Logger logger){
+    /**
+     *
+     * @param mode Machine mode to use (e.g. gameboy, color, etc.)
+     * @param mmu Memory management unit attached
+     * @param debugger Debugger or null
+     * @param logger Logger or null
+     * @param bios true to use mode's BIOS
+     */
+    public CPU(Machine.MachineMode mode, MMU mmu, Debugger debugger, Logger logger, boolean bios){
         this.mmu = mmu;
         a = mode.afInitial;
         zero = half = carry = true;
@@ -32,11 +49,16 @@ public class CPU {
         h = 0x01;
         l = 0x4d;
         sp = 0xfffe;
-        pc = 0x00; // Start with the opcode at 0x100, as this is what's loaded after the BIOS
+        pc = bios ? 0x00 : 0x100; // Start with the opcode at 0x100, as this is what's loaded after the BIOS
         this.debugger = debugger;
         this.logger = logger;
     }
 
+    /**
+     * Step through an opcode
+     * @param machine Machine this runs on
+     * @return Number of m-cycles taken
+     */
     public int performOp(Machine machine){
         pc &= 0xffff;
         if (checkInterrupt(machine)) {
@@ -60,6 +82,11 @@ public class CPU {
         return mDelta;
     }
 
+    /**
+     * Check for interrupts to service
+     * @param machine running machine
+     * @return true if any interrupts were serviced
+     */
     private boolean checkInterrupt(Machine machine) {
         int interruptHandles = machine.interruptsEnabled & machine.interruptsFired & 0x1f;
         if(interruptHandles != 0){
@@ -91,6 +118,9 @@ public class CPU {
         return false;
     }
 
+    /**
+     * Dump all registers for debugging
+     */
     public void dumpRegisters(){
         System.out.printf("Time: %d\n", m);
         System.out.printf("b: %02x;\tc: %02x;\n", b, c);
@@ -101,8 +131,13 @@ public class CPU {
         System.out.printf("SP: %04x;\n", sp);
         System.out.printf("PC: %04x: %02x;\n", pc, mmu.read8(pc));
         System.out.printf("Interrupts: %s;\n", interrupts);
+        System.out.printf("Halt bug: %s;\n", haltBug);
     }
 
+    /**
+     * Service interrupt at a given address
+     * @param address Address to set PC to
+     */
     private void intRst(int address){
         lastInt = address;
         sp -= 2;
@@ -112,9 +147,12 @@ public class CPU {
         interrupts = false;
     }
 
+    /**
+     * Called when there is an unimplemented (i.e. bad) opcode
+     * @param opcode Problematic byte
+     */
     private void unimplemented(int opcode){
         System.err.printf("ERROR: Unimplemented opcode %02x at PC = %04x!%n", opcode, pc - 1);
-        //System.exit(1);
     }
 
     // For debugging only
@@ -529,6 +567,10 @@ public class CPU {
         return 1;
     }
 
+    /**
+     * Get the next byte incorporating halt but
+     * @return Next byte
+     */
     private int next8() {
         int b = mmu.read8(pc);
         if (!haltBug) {
@@ -538,12 +580,21 @@ public class CPU {
         return b;
     }
 
+    /**
+     *
+     * @return Next 2 bytes
+     */
     private int next16() {
         int lsb = next8();
         int msb = next8();
         return (msb << 8) | lsb;
     }
 
+    /**
+     *
+     * @param id Index of register
+     * @param value Value provided
+     */
     private void setRegister(int id, int value){
         switch(id){
             case 0:
@@ -589,6 +640,10 @@ public class CPU {
         }
     }
 
+    /**
+     *
+     * @param value Integer flag register value
+     */
     public void setFlagRegister(int value) {
         zero = (value & 0x80) != 0;
         subtract = (value & 0x40) != 0;
@@ -596,10 +651,19 @@ public class CPU {
         carry = (value & 0x10) != 0;
     }
 
+    /**
+     *
+     * @return Flags as an int
+     */
     public int getFlagRegister() {
         return (zero ? 0x80 : 0) | (subtract ? 0x40 : 0) | (half ? 0x20 : 0) | (carry ? 0x10 : 0);
     }
 
+    /**
+     *
+     * @param id Register ID
+     * @return Register value
+     */
     public int getRegister(int id){
         switch(id){
             case -2: return next16(); // Immediate 2 bytes
@@ -1000,6 +1064,43 @@ public class CPU {
                 break;
         }
         return (register == 6) ? longCycles : 2;
+    }
+
+    /**
+     * Save state of CPU
+     * @param dos Destination stream
+     * @throws IOException On inner write calls
+     */
+    public void save(DataOutputStream dos) throws IOException {
+        dos.write("CPU ".getBytes(StandardCharsets.UTF_8));
+        dos.writeInt(m);
+        dos.writeInt(mDelta);
+        dos.writeInt(getRegister(8));
+        dos.writeInt(getRegister(9));
+        dos.writeInt(getRegister(10));
+        dos.writeInt(getRegister(11));
+        dos.writeInt(getRegister(13));
+        dos.writeInt(pc);
+        dos.writeBoolean(interrupts);
+        dos.writeBoolean(haltBug);
+    }
+
+    /**
+     * Load CPU state
+     * @param dis Input stream
+     * @throws IOException From inner read calls
+     */
+    public void load(DataInputStream dis) throws IOException {
+        m = dis.readInt();
+        mDelta = dis.readInt();
+        setRegister(8, dis.readInt());
+        setRegister(9, dis.readInt());
+        setRegister(10, dis.readInt());
+        setRegister(11, dis.readInt());
+        setRegister(13, dis.readInt());
+        pc = dis.readInt();
+        interrupts = dis.readBoolean();
+        haltBug = dis.readBoolean();
     }
 
 }

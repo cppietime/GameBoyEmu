@@ -1,18 +1,35 @@
 package com.funguscow.gb;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Comparator;
 
 /**
- * Handle graphics
+ * The graphical processing unit that handles pixels of the GB screen
  */
 public class GPU {
 
     public static final int MS_BETWEEN_VBLANKS = (144 * (51 + 20 + 43)) * 1000 / (1 << 20);
     public static final int WAIT_THRESHOLD = 4;
 
-    public  interface GameboyScreen {
+    /**
+     * Accepts pixels
+     */
+    public interface GameboyScreen {
+        /**
+         * Place a pixel into the screen
+         * @param x X coordinate
+         * @param y Y coordinate
+         * @param color Color in RGB888 format
+         */
         void putPixel(int x, int y, int color);
+
+        /**
+         * Update the screen
+         */
         void update();
     }
 
@@ -29,11 +46,11 @@ public class GPU {
         public int cgbPalette;
     }
 
-    int line; // Current line being scanned
+    private int line; // Current line being scanned
     private int windowLine;
     private int mode = 2; // 0 - hblank, 1 - vblank, 2 - OAM, 3 - VRAM
     private int modeCycles; // Cycles spent on this line
-    Machine machine;
+    private Machine machine;
 
     private boolean lcdOn, windowMapHigh, windowOn, bgTileHigh, bgMapHigh, tallSprites, spritesOn, bgOn;
     private boolean oamInt, vblankInt, hblankInt, lycInt, lycCoincidence;
@@ -50,6 +67,8 @@ public class GPU {
     private final SpriteAttrib[] attribs = new SpriteAttrib[40];
     private final Integer[] spriteOrder = new Integer[40];
     private final boolean[] occluded = new boolean[SCREEN_WIDTH];
+
+    // Accessed by OpcodeTest
     byte[] vram;
 
     private final int[] zBuf = new int[SCREEN_WIDTH * SCREEN_HEIGHT];
@@ -59,12 +78,20 @@ public class GPU {
     public GameboyScreen screen = null;
 
     private final boolean cgb;
+    private final boolean compatibility;
     private int vramBank; // CGB only
     private boolean oamPosOrder;
 
-    public GPU(Machine machine, boolean cgb){
+    /**
+     *
+     * @param machine Machine running
+     * @param cgb True for gameboy color mode
+     * @param compatibility True for monochrome compatibility mode on gameboy color
+     */
+    public GPU(Machine machine, boolean cgb, boolean compatibility){
         this.machine = machine;
         this.cgb = cgb;
+        this.compatibility = compatibility;
         vram = new byte[cgb ? (VRAM_SIZE * 2) : VRAM_SIZE];
         for(int i = 0; i < 40; i++){
             attribs[i] = new SpriteAttrib();
@@ -73,6 +100,9 @@ public class GPU {
         lastVBlank = System.currentTimeMillis();
     }
 
+    /**
+     * Needs to be called after constructor
+     */
     public void initState() {
         mode = 3; // Is this even really right?
         lycCoincidence = true;
@@ -101,7 +131,7 @@ public class GPU {
             return;
         }
         Arrays.fill(zBuf, 0);
-        if(bgOn || cgb){ // Bit 0 of LCDC is different in CGB
+        if(bgOn || (cgb && !compatibility)){ // Bit 0 of LCDC is different in CGB
             int tiledataBase = bgTileHigh ? 0x1000 : 0x0000;
             // Draw Background
             {
@@ -155,7 +185,11 @@ public class GPU {
                         }
                         int color;
                         if (cgb) {
-                            int rgb = bgPalColor[cgbPalette * 4 + palid];
+                            int pIndex = palid;
+                            if (compatibility) {
+                                pIndex = bgPal[pIndex];
+                            }
+                            int rgb = bgPalColor[cgbPalette * 4 + pIndex];
                             int r = rgb & 31;
                             int g = (rgb >> 5) & 31;
                             int b = (rgb >> 10) & 31;
@@ -223,7 +257,11 @@ public class GPU {
                             }
                             int color;
                             if (cgb) {
-                                int rgb = bgPalColor[cgbPalette * 4 + palid];
+                                int pIndex = palid;
+                                if (compatibility) {
+                                    pIndex = bgPal[pIndex];
+                                }
+                                int rgb = bgPalColor[cgbPalette * 4 + pIndex];
                                 int r = rgb & 31;
                                 int g = (rgb >> 5) & 31;
                                 int b = (rgb >> 10) & 31;
@@ -303,7 +341,13 @@ public class GPU {
                     if (draw) {
                         int color;
                         if (cgb) {
-                            int rgb = obPalColor[sprite.cgbPalette * 4 + pixel];
+                            int pIndex = pixel;
+                            int sPal = sprite.cgbPalette;
+                            if (compatibility) {
+                                pIndex = (sprite.usePal1 ? ob1Pal : ob0Pal)[pIndex];
+                                sPal = 0;
+                            }
+                            int rgb = obPalColor[sPal * 4 + pIndex];
                             int r = rgb & 31;
                             int g = (rgb >> 5) & 31;
                             int b = (rgb >> 10) & 31;
@@ -410,6 +454,9 @@ public class GPU {
         }
     }
 
+    /**
+     * Increment the line and windowline as appropriate
+     */
     private void incrementLine() {
         line++;
         if (windowX >= 0 && windowY >= 0 && windowX <= 166 && windowY <= 143) {
@@ -417,12 +464,15 @@ public class GPU {
         }
     }
 
+    /**
+     * Fetch a byte
+     * @param address Address to read
+     * @return Byte value
+     */
     public int read(int address){
         switch(address >> 12){
             case 0x8: // VRAM
             case 0x9:
-//                if (mode == 3)
-//                    return 0xff;
                 address &= 0x1fff;
                 if (cgb) {
                     address = address | (vramBank << 13);
@@ -544,11 +594,15 @@ public class GPU {
         return 0;
     }
 
+    /**
+     * Write a value to GPU
+     * @param address Address to write to
+     * @param value Value to write
+     */
     public void write(int address, int value){
         switch(address >> 12){
             case 0x8: // VRAM
             case 0x9:
-//                if (mode != 3)
                 address &= 0x1fff;
                 if (cgb) {
                     address = address | (vramBank << 13);
@@ -698,6 +752,163 @@ public class GPU {
                         }
                 }
         }
+    }
+
+    /**
+     * Save state of GPU
+     * @param dos Destination stream
+     * @throws IOException From inner write calls
+     */
+    public void save(DataOutputStream dos) throws IOException {
+        dos.write("GPU ".getBytes(StandardCharsets.UTF_8));
+        dos.writeInt(vram.length);
+        dos.writeBoolean(cgb);
+        dos.write(vram);
+        for (int c : bgPal) {
+            dos.writeInt(c);
+        }
+        for (int c : ob0Pal) {
+            dos.writeInt(c);
+        }
+        for (int c : ob1Pal) {
+            dos.writeInt(c);
+        }
+        for (SpriteAttrib sprite : attribs) {
+            dos.writeInt(sprite.x);
+            dos.writeInt(sprite.y);
+            dos.writeInt(sprite.pattern);
+            dos.writeBoolean(sprite.priority);
+            dos.writeBoolean(sprite.xFlip);
+            dos.writeBoolean(sprite.yFlip);
+            dos.writeBoolean(sprite.usePal1);
+            dos.writeBoolean(sprite.useVramBank1);
+            dos.writeInt(sprite.cgbPalette);
+        }
+        dos.writeInt(mode);
+        dos.writeInt(modeCycles);
+        dos.writeInt(line);
+        dos.writeInt(windowLine);
+        dos.writeInt(scrollX);
+        dos.writeInt(scrollY);
+        dos.writeInt(windowX);
+        dos.writeInt(windowY);
+        dos.writeInt(lyc);
+        dos.writeBoolean(lcdOn);
+        dos.writeBoolean(bgOn);
+        dos.writeBoolean(windowOn);
+        dos.writeBoolean(spritesOn);
+        dos.writeBoolean(windowMapHigh);
+        dos.writeBoolean(bgMapHigh);
+        dos.writeBoolean(bgTileHigh);
+        dos.writeBoolean(tallSprites);
+        dos.writeBoolean(oamInt);
+        dos.writeBoolean(vblankInt);
+        dos.writeBoolean(hblankInt);
+        dos.writeBoolean(lycInt);
+        dos.writeBoolean(lycCoincidence);
+        if (cgb) {
+            dos.writeBoolean(compatibility);
+            for (int c : bgPalColor) {
+                dos.writeInt(c);
+            }
+            for (int c : obPalColor) {
+                dos.writeInt(c);
+            }
+            dos.writeInt(bgPalIndex);
+            dos.writeInt(obPalIndex);
+            dos.writeInt(vramBank);
+            dos.writeBoolean(bgPalIncrement);
+            dos.writeBoolean(obPalIncrement);
+            dos.writeBoolean(oamPosOrder);
+        }
+    }
+
+    /**
+     * Load GPU state
+     * @param dis Source stream
+     * @throws IOException From inner read calls
+     */
+    public void load(DataInputStream dis) throws IOException {
+        if (dis.readInt() != vram.length) {
+            throw new IOException("VRAM sizes do not match");
+        }
+        if (dis.readBoolean() != cgb) {
+            throw new IOException("CGB modes do not match");
+        }
+        dis.read(vram);
+        for (int i = 0; i < bgPal.length; i++) {
+            bgPal[i] = dis.readInt();
+        }
+        for (int i = 0; i < ob0Pal.length; i++) {
+            ob0Pal[i] = dis.readInt();
+        }
+        for (int i = 0; i < ob1Pal.length; i++) {
+            ob1Pal[i] = dis.readInt();
+        }
+        for (SpriteAttrib sprite : attribs) {
+            sprite.x = dis.readInt();
+            sprite.y = dis.readInt();
+            sprite.pattern = dis.readInt();
+            sprite.priority = dis.readBoolean();
+            sprite.xFlip = dis.readBoolean();
+            sprite.yFlip = dis.readBoolean();
+            sprite.usePal1 = dis.readBoolean();
+            sprite.useVramBank1 = dis.readBoolean();
+            sprite.cgbPalette = dis.readInt();
+        }
+        mode = dis.readInt();
+        modeCycles = dis.readInt();
+        line = dis.readInt();
+        windowLine = dis.readInt();
+        scrollX = dis.readInt();
+        scrollY = dis.readInt();
+        windowX = dis.readInt();
+        windowY = dis.readInt();
+        lyc = dis.readInt();
+        lcdOn = dis.readBoolean();
+        bgOn = dis.readBoolean();
+        windowOn = dis.readBoolean();
+        spritesOn = dis.readBoolean();
+        windowMapHigh = dis.readBoolean();
+        bgMapHigh = dis.readBoolean();
+        bgTileHigh = dis.readBoolean();
+        tallSprites = dis.readBoolean();
+        oamInt = dis.readBoolean();
+        vblankInt = dis.readBoolean();
+        hblankInt = dis.readBoolean();
+        lycInt = dis.readBoolean();
+        lycCoincidence = dis.readBoolean();
+        if (cgb) {
+            if (compatibility != dis.readBoolean()) {
+                throw new IOException("Compatibility modes do not match");
+            }
+            for (int i = 0; i < bgPalColor.length; i++) {
+                bgPalColor[i] = dis.readInt();
+            }
+            for (int i = 0; i < obPalColor.length; i++) {
+                obPalColor[i] = dis.readInt();
+            }
+            bgPalIndex = dis.readInt();
+            obPalIndex = dis.readInt();
+            vramBank = dis.readInt();
+            bgPalIncrement = dis.readBoolean();
+            obPalIncrement = dis.readBoolean();
+            oamPosOrder = dis.readBoolean();
+        }
+    }
+
+    /**
+     * Output the debugging state
+     */
+    public void printDebugState() {
+        System.out.printf("On? %s, bg? %s, window? %s, sprites? %s\n", lcdOn, bgOn, windowOn, spritesOn);
+        System.out.printf("In mode %d for 0x%x cycles\n", mode, modeCycles);
+        System.out.printf("High bg map? %s, High window map? %s, High bg tiles? %s, Tall sprites? %s\n", bgMapHigh, windowMapHigh, bgTileHigh, tallSprites);
+        System.out.printf("Scroll X: %d, Y: %d, Window X: %d, Y: %x\n", scrollX, scrollY, windowX, windowY);
+        System.out.printf("Line %d, winline %d, LYC %d, coincidence? %s\n", line, windowLine, lyc, lycCoincidence);
+        System.out.printf("Interrupts - OAM? %s, VBlank? %s, HBlank? %s, LYC? %s\n", oamInt, vblankInt, hblankInt, lycInt);
+        System.out.printf("BG pal index %d, incr? %s, OP index %d, incr? %s\n", bgPalIndex, bgPalIndex, obPalIndex, obPalIncrement);
+        System.out.printf("VRAM bank 0x%x, OAM priority? %s\n", vramBank, oamPosOrder);
     }
 
 }
