@@ -1,7 +1,5 @@
 package com.funguscow.gb;
 
-import com.funguscow.gb.frontend.Screen;
-
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -280,7 +278,7 @@ public class Machine {
      *
      * @param screen Screen to attach to the GPU
      */
-    public void attachScreen(Screen screen) {
+    public void attachScreen(GPU.GameboyScreen screen) {
         this.gpu.screen = screen;
     }
 
