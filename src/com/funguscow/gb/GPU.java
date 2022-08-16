@@ -46,6 +46,13 @@ public class GPU {
         public int cgbPalette;
     }
 
+    public final int[] grayPalette = {
+            0x00ffffff,
+            0x00aaaaaa,
+            0x00555555,
+            0x00000000
+    };
+
     private int line; // Current line being scanned
     private int windowLine;
     private int mode = 2; // 0 - hblank, 1 - vblank, 2 - OAM, 3 - VRAM
@@ -59,7 +66,7 @@ public class GPU {
     private final int[] bgPal = new int[4], ob0Pal = new int[4], ob1Pal = new int[4];
 
     // CGB Only
-    private final int[] bgPalColor = new int[4 * 8], obPalColor = new int[4 * 8];
+    final int[] bgPalColor = new int[4 * 8], obPalColor = new int[4 * 8];
     private int bgPalIndex, obPalIndex;
     private boolean bgPalIncrement, obPalIncrement;
     // End CGB Only
@@ -195,9 +202,8 @@ public class GPU {
                             int b = (rgb >> 10) & 31;
                             color = (r << 19) | (g << 11) | (b << 3);
                         } else {
-                            int shade = bgPal[palid] * 85; // Transform [0,3] to [0,255]
-                            shade = 255 - shade;
-                            color = (shade << 16) | (shade << 8) | shade;
+                            int shade = bgPal[palid];
+                            color = grayPalette[shade];
                         }
                         screen.putPixel(screenX, line, color);
                         if (bgPriority && palid != 0) {
@@ -267,9 +273,8 @@ public class GPU {
                                 int b = (rgb >> 10) & 31;
                                 color = (r << 19) | (g << 11) | (b << 3);
                             } else {
-                                int shade = bgPal[palid] * 85; // Transform [0,3] to [0,255]
-                                shade = 255 - shade;
-                                color = (shade << 16) | (shade << 8) | shade;
+                                int shade = bgPal[palid];
+                                color = grayPalette[shade];
                             }
                             screen.putPixel(screenX, line, color);
                             if (bgPriority && palid != 0) {
@@ -353,9 +358,8 @@ public class GPU {
                             int b = (rgb >> 10) & 31;
                             color = (r << 19) | (g << 11) | (b << 3);
                         } else {
-                            int shade = (sprite.usePal1 ? ob1Pal : ob0Pal)[pixel] * 85;
-                            shade = 255 - shade;
-                            color = (shade << 16) | (shade << 8) | shade;
+                            int shade = (sprite.usePal1 ? ob1Pal : ob0Pal)[pixel];
+                            color = grayPalette[shade];
                         }
                         screen.putPixel(screenX, line, color);
                         occluded[screenX] = true;

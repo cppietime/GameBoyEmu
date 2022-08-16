@@ -62,7 +62,7 @@ public class Machine {
      * Speeds up emulation by the specified factor
      * Must never be 0!!
      */
-    int speedUp = 1;
+    public int speedUp = 1;
 
     MachineMode mode;
 
@@ -299,6 +299,30 @@ public class Machine {
      */
     public Keypad getKeypad() {
         return keypad;
+    }
+
+    /**
+     * Exposed so the frontend can adjust palettes
+     * @return The palette used when NOT in color mode
+     */
+    public int[] getDmgPalette() {
+        return gpu.grayPalette;
+    }
+
+    /**
+     * Exposed so the frontend can adjust palettes
+     * @return The color palette used for background in CGB mode
+     */
+    public int[] getCgbBgPalette() {
+        return gpu.bgPalColor;
+    }
+
+    /**
+     * Exposed so the frontend can adjust palettes
+     * @return The color palette used for sprites in CGB mode
+     */
+    public int[] getCgbObPalette() {
+        return gpu.obPalColor;
     }
 
     /**

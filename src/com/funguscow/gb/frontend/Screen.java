@@ -16,8 +16,7 @@ import java.io.*;
 
 public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
 
-    private static Machine machine;
-
+    private final Machine machine;
     private final BufferedImage image;
     private BufferStrategy strategy;
     private boolean open = true;
@@ -27,9 +26,10 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
     private long startTime;
     private int numFrames;
 
-    public Screen(){
+    public Screen(Machine machine){
         startTime = System.currentTimeMillis();
         image = new BufferedImage(160, 144, BufferedImage.TYPE_INT_RGB);
+        this.machine = machine;
     }
 
     public boolean isOpen() {
@@ -138,18 +138,23 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
             case KeyEvent.VK_D:
                 keypad.keyDown(Keypad.KEY_SELECT); break;
             case KeyEvent.VK_F1:
-                try (OutputStream os = new FileOutputStream("savestate")) {
+                try (OutputStream os = new FileOutputStream(machine.getBaseNamePath() + ".savestate")) {
                     machine.saveState(os);
                 } catch (Exception ex) {
                     ex.printStackTrace();
                 }
                 break;
             case KeyEvent.VK_F2:
-                try (InputStream is = new FileInputStream("savestate")) {
+                try (InputStream is = new FileInputStream(machine.getBaseNamePath() + ".savestate")) {
                     machine.loadState(is);
                 } catch (Exception ex) {
                     ex.printStackTrace();
                 }
+                break;
+            case KeyEvent.VK_SPACE:
+                machine.speedUp = 5;
+                machine.mute(true);
+                break;
         }
     }
 
@@ -174,6 +179,9 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
                 keypad.keyUp(Keypad.KEY_START); break;
             case KeyEvent.VK_D:
                 keypad.keyUp(Keypad.KEY_SELECT); break;
+            case KeyEvent.VK_SPACE:
+                machine.speedUp = 1;
+                machine.mute(false);
         }
     }
 
@@ -181,8 +189,8 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
-        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
-//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon crystal.gbc";
+//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
+        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon crystal.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg_sound\\rom_singles\\01-registers.gb";
@@ -190,14 +198,19 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\oam_bug\\oam_bug.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg-acid2.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cgb-acid2.gbc";
-        machine = new Machine(new File(ROMPath), Machine.MachineMode.GAMEBOY_COLOR);
+        Machine machine = new Machine(new File(ROMPath), Machine.MachineMode.GAMEBOY_COLOR);
 //        machine.loadRAM(new File("D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.ram"));
-        Screen screen = new Screen();
+        Screen screen = new Screen(machine);
         screen.keypad = machine.getKeypad();
         machine.attachScreen(screen);
         screen.makeContainer();
         PcSpeaker speaker = new PcSpeaker();
         machine.attachSpeaker(speaker);
+        int[] pal = machine.getDmgPalette();
+        pal[0] = 0x0000ffff;
+        pal[1] = 0x0020b010;
+        pal[2] = 0x00400000;
+        pal[3] = 0x00000000;
 //        try {
 //            InputStream source = new FileInputStream("D:\\Games\\GBA\\gbtest\\gameboy-test-data\\cpu_tests\\v1\\01.test");
 //            machine.test(source);
