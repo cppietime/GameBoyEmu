@@ -4,6 +4,10 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.IntStream;
 
 /**
  * The APU to play sounds
@@ -12,6 +16,7 @@ public class SoundBoard {
 
     private static final int BUFFER_SIZE = 2048;
     private static final byte[] DUTY = {(byte)1, (byte)0x81, (byte)0x87, (byte)0x7E};
+    private static final int CYCLES_PER_TIMER_TICK = 1 << (20 - 9);
 
     public static class SpeakerFormat {
         public int sampleRate;
@@ -150,14 +155,28 @@ public class SoundBoard {
     private int cycleCounter;
     private int bufferPtr;
 
+    private final Machine machine;
+
     public boolean silent;
 
-    public SoundBoard(int bufferSize) {
+    // Scheduling
+    private long lastTimestamp;
+    private static final int NUM_TASKS = 6,
+        TASK_FREQ1 = 0,
+        TASK_FREQ2 = 1,
+        TASK_FREQ3 = 2,
+        TASK_FREQ4 = 3,
+        TASK_TIMER = 4,
+        TASK_SAMPLE = 5;
+    private final Scheduler.Task[] tasks = new Scheduler.Task[NUM_TASKS];
+
+    public SoundBoard(Machine m, int bufferSize) {
+        machine = m;
         this.bufferSize = bufferSize;
     }
 
-    public SoundBoard() {
-        this(BUFFER_SIZE);
+    public SoundBoard(Machine m) {
+        this(m, BUFFER_SIZE);
     }
 
     /**
@@ -176,6 +195,14 @@ public class SoundBoard {
                 rightBuffer = new byte[bufferSize];
             }
         }
+    }
+
+    /**
+     *
+     * @return Number of CPU cycles per sound sample
+     */
+    public int getCyclesPerSample() {
+        return (1 << 20) / format.sampleRate;
     }
 
     /**
@@ -419,6 +446,20 @@ public class SoundBoard {
      * @param cycles Number of cycles since last call to this method
      */
     private void incrementTimer(int cycles) {
+        /*
+         * TODO Convert this all to be scheduler-based
+         * The events that will need to be scheduled to replace this:
+         * Increment waveCounter1 (reset frequencyCounter1)
+         * Increment waveCounter2 (reset frequencyCounter2)
+         * Increment wavePtr (reset frequencyCounter3)
+         * Advance lfsr4 (reset frequencyCounter4)
+         * Tick the frame sequencer, which will do each of the following:
+         *      Decrement all length counters
+         *      Advance frequency sweep
+         *      Advance all envelopes
+         *
+         * Not part of this function, but I will also need an event for generating a sample
+         */
         while (cycles > 0) {
             cycleCounter++;
             cycles --;
@@ -734,6 +775,50 @@ public class SoundBoard {
         mapRight = dis.readInt();
         masterEnable = dis.readBoolean();
         cycleCounter = dis.readInt();
+    }
+
+    // Scheduler methods
+    private void cancel() {
+        Arrays.stream(tasks).forEach(machine.scheduler::cancel);
+        Arrays.fill(tasks, null);
+    }
+
+    private void invalidateTasks() {
+        Arrays.fill(tasks, null);
+    }
+
+    private void cullTasks() {
+        IntStream.range(0, NUM_TASKS).filter(i -> tasks[i].index < 0).forEach(i -> tasks[i] = null);
+    }
+
+    /**
+     * Called when the frame sequencer issues a tick
+     */
+    private void scheduledTimerTick(long cycles, Object obj) {
+        tasks[TASK_TIMER] = machine.scheduler.add(new Scheduler.Task(this::scheduledTimerTick, null, cycles + CYCLES_PER_TIMER_TICK));
+    }
+
+    /**
+     * Called when ready to produce a sample
+     */
+    private void scheduledSample(long cycles, Object obj) {
+        tasks[TASK_SAMPLE] = machine.scheduler.add(new Scheduler.Task(this::scheduledSample, null, cycles + getCyclesPerSample()));
+    }
+
+    private void scheduledFreq1(long cycles, Object obj) {
+        tasks[TASK_FREQ1] = machine.scheduler.add(new Scheduler.Task(this::scheduledFreq1, null, cycles + 2048 - frequencyDivisor1));
+    }
+
+    private void scheduledFreq2(long cycles, Object obj) {
+
+    }
+
+    private void scheduledFreq3(long cycles, Object obj) {
+
+    }
+
+    private void scheduledFreq4(long cycles, Object obj) {
+
     }
 
 }

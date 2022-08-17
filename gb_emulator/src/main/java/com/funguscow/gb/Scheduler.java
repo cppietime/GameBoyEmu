@@ -127,6 +127,7 @@ public class Scheduler {
          */
         public void remove(Task task) {
             remove(task.index);
+            task.index = -1;
         }
 
         /**
@@ -205,7 +206,9 @@ public class Scheduler {
      * @param task Cancel this task
      */
     public void cancel(Task task) {
-        heap.remove(task);
+        if (task != null) {
+            heap.remove(task);
+        }
     }
 
     /**
@@ -220,6 +223,7 @@ public class Scheduler {
      * Totally wipe out all scheduled events
      */
     public void clear() {
+        heap.heap.forEach(t -> t.index = -1);
         heap.heap.clear();
     }
 

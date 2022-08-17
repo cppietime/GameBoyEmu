@@ -107,7 +107,7 @@ public class Machine {
         baseNamePath = saveFile.getPath();
         timer = new Timer(this);
         keypad = new Keypad(this);
-        soundBoard = new SoundBoard(); // Not yet used
+        soundBoard = new SoundBoard(this); // Not yet used
         this.saveFile = saveFile;
         this.mode = mode;
         byte[] header = new byte[0x150];
@@ -218,14 +218,14 @@ public class Machine {
         }
 
         // Skip to next event if halted
-        if (halt && !scheduler.isEmpty()) {
+        if (halt && !scheduler.isEmpty() && (soundBoard.silent || soundBoard.speaker == null)) {
             cyclesExecuted = scheduler.skip(cyclesExecuted);
         }
 
         int mCycles = cpu.performOp(this); // Execute an opcode after checking for interrupts
 
         // TODO all of this should be handled in a scheduler
-        gpu.increment(mCycles, soundBoard.silent || soundBoard.speaker == null); // Increment the GPU's state
+//        gpu.increment(mCycles, soundBoard.silent || soundBoard.speaker == null); // Increment the GPU's state
         soundBoard.step(mCycles, speedUp, doubleSpeed);
 
         cyclesExecuted += mCycles;
@@ -342,6 +342,7 @@ public class Machine {
     private void cancelComponentSchedules() {
         scheduler.clear();
         timer.invalidateTasks();
+        gpu.invalidateTasks();
     }
 
     /**

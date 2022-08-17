@@ -4,16 +4,15 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.List;
 
 /**
  * The graphical processing unit that handles pixels of the GB screen
  */
 public class GPU {
-
-    public static final int MS_BETWEEN_VBLANKS = (144 * (51 + 20 + 43)) * 1000 / (1 << 20);
-    public static final int WAIT_THRESHOLD = 4;
 
     /**
      * Accepts pixels
@@ -32,6 +31,14 @@ public class GPU {
          */
         void update();
     }
+
+    public static final int MS_BETWEEN_VBLANKS = (144 * (51 + 20 + 43)) * 1000 / (1 << 20);
+    public static final int WAIT_THRESHOLD = 4;
+
+    private static final int HBLANK_CYCLES = 51;
+    private static final int OAM_CYCLES = 20;
+    private static final int VRAM_CYCLES = 43;
+    private static final int VBLANK_CYCLES = 114;
 
     public static final int VRAM_SIZE = 0x2000;
     public static final int SCREEN_HEIGHT = 144;
@@ -89,6 +96,10 @@ public class GPU {
     private int vramBank; // CGB only
     private boolean oamPosOrder;
 
+    // Used for scheduling
+    private long lastTimestamp;
+    private final List<Scheduler.Task> tasks = new ArrayList<>();
+
     /**
      *
      * @param machine Machine running
@@ -112,7 +123,15 @@ public class GPU {
      */
     public void initState() {
         mode = 3; // Is this even really right?
+        modeCycles = 0;
+        line = 0;
+        windowLine = 0;
         lycCoincidence = true;
+        lastTimestamp = machine.getCyclesExecuted();
+        tasks.add(
+                machine.scheduler.add(new Scheduler.Task(
+                        this::scheduledTransitionOamVram, null, lastTimestamp + HBLANK_CYCLES
+                )));
     }
 
     /**
@@ -375,6 +394,8 @@ public class GPU {
      * @param silent When the APU is active, it handles timing. Otherwise, the GPU should
      */
     public void increment(int cycles, boolean silent){
+        if (true)
+            return;
         if (!lcdOn) {
             mode = 0;
             modeCycles = 0;
@@ -662,6 +683,15 @@ public class GPU {
                                     tallSprites = (value & 0x4) != 0;
                                     spritesOn = (value & 0x2) != 0;
                                     bgOn = (value & 0x1) != 0;
+                                    if (!lcdOn) {
+                                        cancel();
+                                        mode = 0;
+                                        modeCycles = 0;
+                                        line = 0;
+                                    } else {
+                                        cancel();
+                                        scheduledTransitionVramHblank(machine.getCyclesExecuted(), null);
+                                    }
                                     break;
                                 case 0x1: // STAT
                                     lycInt = (value & 0x40) != 0;
@@ -790,6 +820,7 @@ public class GPU {
             dos.writeInt(sprite.cgbPalette);
         }
         dos.writeInt(mode);
+        modeCycles = (int) (machine.getCyclesExecuted() - lastTimestamp);
         dos.writeInt(modeCycles);
         dos.writeInt(line);
         dos.writeInt(windowLine);
@@ -900,6 +931,42 @@ public class GPU {
             obPalIncrement = dis.readBoolean();
             oamPosOrder = dis.readBoolean();
         }
+        lastTimestamp = machine.getCyclesExecuted();
+        initState();
+//        switch (mode) {
+//            case 0: // HBlank
+//                tasks.add(
+//                        machine.scheduler.add(
+//                                new Scheduler.Task(this::scheduledEndHblank,
+//                                        null,
+//                                        lastTimestamp + HBLANK_CYCLES - modeCycles
+//                                )));
+//                break;
+//            case 1: // VBlank
+//                tasks.add(
+//                        machine.scheduler.add(
+//                                new Scheduler.Task(this::scheduledVblankLine,
+//                                        null,
+//                                        lastTimestamp + VBLANK_CYCLES - modeCycles
+//                                )));
+//                break;
+//            case 2: // OAM
+//                tasks.add(
+//                        machine.scheduler.add(
+//                                new Scheduler.Task(this::scheduledTransitionOamVram,
+//                                        null,
+//                                        lastTimestamp + OAM_CYCLES - modeCycles
+//                                )));
+//                break;
+//            case 3: // VRAM
+//                tasks.add(
+//                        machine.scheduler.add(
+//                                new Scheduler.Task(this::scheduledTransitionVramHblank,
+//                                        null,
+//                                        lastTimestamp + VRAM_CYCLES - modeCycles
+//                                )));
+//                break;
+//        }
     }
 
     /**
@@ -914,6 +981,137 @@ public class GPU {
         System.out.printf("Interrupts - OAM? %s, VBlank? %s, HBlank? %s, LYC? %s\n", oamInt, vblankInt, hblankInt, lycInt);
         System.out.printf("BG pal index %d, incr? %s, OP index %d, incr? %s\n", bgPalIndex, bgPalIndex, obPalIndex, obPalIncrement);
         System.out.printf("VRAM bank 0x%x, OAM priority? %s\n", vramBank, oamPosOrder);
+    }
+
+    // Methods used for scheduling
+
+    /**
+     * Cancel all pending tasks and remove from the list
+     */
+    private void cancel() {
+        tasks.forEach(machine.scheduler::cancel);
+        tasks.clear();
+    }
+
+    /**
+     * Remove executed tasks
+     */
+    private void cullTasks() {
+        tasks.removeIf(t -> t.index < 0);
+    }
+
+    /**
+     * Invalidate pending tasks as no longer in the scheduler
+     * e.g. for loading a save state
+     */
+    public void invalidateTasks() {
+        tasks.clear();
+    }
+
+    /**
+     * Only ever called from end of VRAM state
+     */
+    private void scheduledTransitionVramHblank(long cycles, Object argument) {
+        lastTimestamp = cycles;
+        cullTasks();
+        // Enter mode 0 HBLANK
+        mode = 0;
+        if (cgb && machine.mmu != null) {
+            machine.mmu.onHblank();
+        }
+        scanline();
+        if(hblankInt) {
+            machine.interruptsFired |= 0x2;
+        }
+        tasks.add(
+                machine.scheduler.add(new Scheduler.Task(
+                        this::scheduledEndHblank, null, cycles + HBLANK_CYCLES
+                )));
+    }
+
+    private void scheduledEndHblank(long cycles, Object argument) {
+        lastTimestamp = cycles;
+        cullTasks();
+        incrementLine();
+        if(line == lyc) {
+            lycCoincidence = true;
+            if(lycInt) {
+                machine.interruptsFired |= 0x2;
+            }
+        }
+        else {
+            lycCoincidence = false;
+        }
+        if(line < 144) {
+            if(oamInt) {
+                machine.interruptsFired |= 0x2;
+            }
+            // Enter mode 2 OAM
+            mode = 2;
+            tasks.add(
+                    machine.scheduler.add(new Scheduler.Task(
+                            this::scheduledTransitionOamVram, null, cycles + OAM_CYCLES
+                    )));
+        }
+        else {
+            doDraw();
+            machine.interruptsFired |= 1; // Vblank interrupt
+            if(vblankInt) {
+                machine.interruptsFired |= 0x2;
+            }
+            // Enter mode 1 VBLANK
+            mode = 1;
+            tasks.add(
+                    machine.scheduler.add(new Scheduler.Task(
+                            this::scheduledVblankLine, null, cycles + VBLANK_CYCLES
+                    )));
+            machine.mmu.onVblank();
+            long passed = System.currentTimeMillis() - lastVBlank;
+            long targetWait = MS_BETWEEN_VBLANKS / machine.speedUp - passed;
+            if (targetWait > WAIT_THRESHOLD && machine.soundBoard.silent) {
+                try {
+                    Thread.sleep(targetWait);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private void scheduledVblankLine(long cycles, Object argument) {
+        lastTimestamp = cycles;
+        cullTasks();
+        incrementLine();
+        if(line >= 154) {
+            if(oamInt) {
+                machine.interruptsFired |= 0x2;
+            }
+            // Enter mode 2 OAM
+            mode = 2;
+            tasks.add(
+                    machine.scheduler.add(new Scheduler.Task(
+                            this::scheduledTransitionOamVram, null, cycles + OAM_CYCLES
+                    )));
+            line = 0;
+            windowLine = 0;
+            lastVBlank = System.currentTimeMillis();
+        } else {
+            tasks.add(
+                    machine.scheduler.add(new Scheduler.Task(
+                            this::scheduledVblankLine, null, cycles + VBLANK_CYCLES
+                    )));
+        }
+    }
+
+    private void scheduledTransitionOamVram(long cycles, Object argument) {
+        lastTimestamp = cycles;
+        cullTasks();
+        // Enter mode 3 VRAM
+        mode = 3;
+        tasks.add(
+                machine.scheduler.add(new Scheduler.Task(
+                        this::scheduledTransitionVramHblank, null, cycles + VRAM_CYCLES
+                )));
     }
 
 }
