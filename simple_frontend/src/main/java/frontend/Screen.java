@@ -214,14 +214,15 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
 
     public static void mainFunc() throws Exception {
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
-        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
+//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
-//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon crystal.gbc";
+        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon crystal.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\tetris.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\mooneye-test-suite\\build\\emulator-only\\mbc5\\rom_64Mb.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg_sound\\rom_singles\\01-registers.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cpu_instrs\\cpu_instrs.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\instr_timing\\instr_timing.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\oam_bug\\oam_bug.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\dmg-acid2.gb";
 //        String ROMPath = "D:\\Games\\GBA\\gbtest\\cgb-acid2.gbc";

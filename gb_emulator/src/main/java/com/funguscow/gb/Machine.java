@@ -42,6 +42,8 @@ public class Machine {
         }
     }
 
+    private long cyclesExecuted;
+
     // All these things are accessed by each other
     CPU cpu;
     MMU mmu;
@@ -49,6 +51,7 @@ public class Machine {
     Timer timer;
     Keypad keypad;
     SoundBoard soundBoard;
+    final Scheduler scheduler = new Scheduler();
 
     boolean halt;
     boolean stop;
@@ -213,11 +216,20 @@ public class Machine {
                 e.printStackTrace();
             }
         }
+
+        // Skip to next event if halted
+        if (halt && !scheduler.isEmpty()) {
+            cyclesExecuted = scheduler.skip(cyclesExecuted);
+        }
+
         int mCycles = cpu.performOp(this); // Execute an opcode after checking for interrupts
+
+        // TODO all of this should be handled in a scheduler
         gpu.increment(mCycles, soundBoard.silent || soundBoard.speaker == null); // Increment the GPU's state
-        timer.increment(mCycles); // Increment the timer's state
         soundBoard.step(mCycles, speedUp, doubleSpeed);
-        mmu.incrementRtc();
+
+        cyclesExecuted += mCycles;
+        scheduler.update(mCycles);
     }
 
     /**
@@ -312,12 +324,24 @@ public class Machine {
         return gpu.obPalColor;
     }
 
+    public long getCyclesExecuted() {
+        return cyclesExecuted;
+    }
+
     /**
      * Sets the mute status of the SoundBoard
      * @param muted True if the SoundBoard should be muted
      */
     public void mute(boolean muted) {
         this.soundBoard.silent = muted;
+    }
+
+    /**
+     * Called when any pending tasks MUST be totally wiped out
+     */
+    private void cancelComponentSchedules() {
+        scheduler.clear();
+        timer.invalidateTasks();
     }
 
     /**
@@ -367,6 +391,7 @@ public class Machine {
             if (monochromeCompatibility != dis.readBoolean()) {
                 throw new RomException("Compatibility modes do not match");
             }
+            cancelComponentSchedules();
             halt = dis.readBoolean();
             stop = dis.readBoolean();
             interruptsEnabled = dis.readInt();
@@ -437,6 +462,7 @@ public class Machine {
             if(!key.equals("SAVE")) {
                 throw new RomException(String.format("Bad key: %s, Not a save file", key));
             }
+            cancelComponentSchedules();
             mmu.loadExternal(dis);
         } catch (Exception e) {
             throw new RomException(e);

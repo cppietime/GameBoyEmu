@@ -157,6 +157,7 @@ public class MMU {
         write8(0xff00, 0xCF);
         write8(0xff02, 0x7E);
         machine.timer.divider = 0xAB;
+        machine.timer.scheduleTimaOverflow();
         write8(0xff06, 0);
         write8(0xff07, 0xF8);
         write8(0xff0f, 0xE1);
@@ -553,6 +554,7 @@ public class MMU {
                         }
                         return 0xff;
                     case 3: // Either write RAM or set a register
+                        incrementRtc();
                         switch(mbc3RtcRegister){
                             case 0:
                                 return externalRam[(ramBank << 13) | (address & 0x1fff)] & 0xff;

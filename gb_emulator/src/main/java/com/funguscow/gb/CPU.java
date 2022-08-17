@@ -62,6 +62,7 @@ public class CPU {
     public int performOp(Machine machine){
         pc &= 0xffff;
         if (checkInterrupt(machine)) {
+            m += mDelta;
             return mDelta;
         }
         if(machine.halt || machine.stop)
