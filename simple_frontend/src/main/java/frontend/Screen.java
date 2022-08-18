@@ -128,18 +128,22 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
         image.setRGB(x, y, pixel);
     }
 
+    private long cycles;
     public void update(){
         Graphics2D g = (Graphics2D) strategy.getDrawGraphics();
         g.drawImage(image, 0, 0, width, height, this);
         g.dispose();
         strategy.show();
-        if (++numFrames % 100 == 0) {
+        if (++numFrames % 500 == 0) {
             long passed = System.currentTimeMillis() - startTime;
             float fps = (numFrames * 1000f) / passed;
-            frame.setTitle(String.format("Fps: %.02f", fps));
-            if (numFrames % 1000 == 0) {
+            long c = machine.getCyclesExecuted();
+            float cps = (c - cycles) * 1000f / passed;
+            frame.setTitle(String.format("%.02ffps %.0fcps", fps, cps));
+            if (numFrames % 500 == 0) {
                 numFrames = 0;
                 startTime += passed;
+                cycles = c;
             }
         }
     }

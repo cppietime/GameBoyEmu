@@ -218,21 +218,21 @@ public class Machine {
                 e.printStackTrace();
             }
         }
-
-        // Skip to next event if halted
-        if (halt && !scheduler.isEmpty() && (soundBoard.silent || soundBoard.speaker == null)) {
-            try {
-                cyclesExecuted = scheduler.skip(cyclesExecuted);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-        int mCycles = cpu.performOp(this); // Execute an opcode after checking for interrupts
-
-        cyclesExecuted += mCycles;
         try {
             mutex.lock();
+
+            // Skip to next event if halted
+            if (halt && !scheduler.isEmpty() && (soundBoard.silent || soundBoard.speaker == null)) {
+                try {
+                    cyclesExecuted = scheduler.skip(cyclesExecuted);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+
+            int mCycles = cpu.performOp(this); // Execute an opcode after checking for interrupts
+
+            cyclesExecuted += mCycles;
             scheduler.update(mCycles);
         } catch (Exception e) {
             e.printStackTrace();
