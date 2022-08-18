@@ -3,6 +3,7 @@ package com.funguscow.gb;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Represents the machine as a whole, holds certain registers
@@ -43,6 +44,7 @@ public class Machine {
     }
 
     private long cyclesExecuted;
+    private final ReentrantLock mutex = new ReentrantLock();
 
     // All these things are accessed by each other
     CPU cpu;
@@ -171,12 +173,12 @@ public class Machine {
             // Load this ROM file into it
             mmu.loadRom(header, 0, 0x150);
             mmu.loadRom(fis,  0x150, (romBanks << 14) - 0x150);
-            try {
-                loadExternal();
-            } catch (RomException re) {
-                System.err.println("Could not load save file: ");
-                re.printStackTrace();
-            }
+//            try {
+//                loadExternal();
+//            } catch (RomException re) {
+//                System.err.println("Could not load save file: ");
+//                re.printStackTrace();
+//            }
         }catch(Exception e){
             throw new RomException(e);
         }
@@ -219,17 +221,24 @@ public class Machine {
 
         // Skip to next event if halted
         if (halt && !scheduler.isEmpty() && (soundBoard.silent || soundBoard.speaker == null)) {
-            cyclesExecuted = scheduler.skip(cyclesExecuted);
+            try {
+                cyclesExecuted = scheduler.skip(cyclesExecuted);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
 
         int mCycles = cpu.performOp(this); // Execute an opcode after checking for interrupts
 
-        // TODO all of this should be handled in a scheduler
-//        gpu.increment(mCycles, soundBoard.silent || soundBoard.speaker == null); // Increment the GPU's state
-        soundBoard.step(mCycles, speedUp, doubleSpeed);
-
         cyclesExecuted += mCycles;
-        scheduler.update(mCycles);
+        try {
+            mutex.lock();
+            scheduler.update(mCycles);
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            mutex.unlock();
+        }
     }
 
     /**
@@ -333,7 +342,7 @@ public class Machine {
      * @param muted True if the SoundBoard should be muted
      */
     public void mute(boolean muted) {
-        this.soundBoard.silent = muted;
+        this.soundBoard.mute(muted);
     }
 
     /**
@@ -343,6 +352,7 @@ public class Machine {
         scheduler.clear();
         timer.invalidateTasks();
         gpu.invalidateTasks();
+        soundBoard.invalidateTasks();
     }
 
     /**
@@ -360,6 +370,7 @@ public class Machine {
             dos.writeInt(interruptsEnabled);
             dos.writeInt(interruptsFired);
             dos.writeBoolean(doubleSpeed);
+            mutex.lock();
             cpu.save(dos);
             mmu.saveState(dos);
             gpu.save(dos);
@@ -370,6 +381,8 @@ public class Machine {
             dos.flush();
         } catch (Exception e) {
             throw new RomException(e);
+        } finally {
+            mutex.unlock();
         }
     }
 
@@ -392,6 +405,7 @@ public class Machine {
             if (monochromeCompatibility != dis.readBoolean()) {
                 throw new RomException("Compatibility modes do not match");
             }
+            mutex.lock();
             cancelComponentSchedules();
             halt = dis.readBoolean();
             stop = dis.readBoolean();
@@ -432,6 +446,8 @@ public class Machine {
             }
         } catch (Exception e) {
             throw new RomException(e);
+        } finally {
+            mutex.unlock();
         }
     }
 
@@ -442,11 +458,14 @@ public class Machine {
      */
     public void saveExternal(OutputStream os) throws RomException {
         try (DataOutputStream dos = new DataOutputStream(os)) {
+            mutex.lock();
             dos.write("SAVE".getBytes(StandardCharsets.UTF_8));
             mmu.saveExternal(dos);
             dos.flush();
         } catch (Exception e) {
             throw new RomException(e);
+        } finally {
+            mutex.unlock();
         }
     }
 
@@ -457,6 +476,7 @@ public class Machine {
      */
     public void loadExternal(InputStream is) throws RomException {
         try (DataInputStream dis = new DataInputStream(is)) {
+            mutex.lock();
             byte[] buffer = new byte[4];
             dis.read(buffer);
             String key = new String(buffer, StandardCharsets.UTF_8);
@@ -467,6 +487,8 @@ public class Machine {
             mmu.loadExternal(dis);
         } catch (Exception e) {
             throw new RomException(e);
+        } finally {
+            mutex.unlock();
         }
     }
 

@@ -6,11 +6,15 @@ import java.util.function.Consumer;
 
 public class Scheduler {
 
+    public interface UncheckedBiConsumer<T, S> {
+        void accept(T t, S s) throws Exception;
+    }
+
     /**
      * Represents a task scheduled to be run
      */
     public static class Task {
-        public BiConsumer<Long, Object> callback;
+        public UncheckedBiConsumer<Long, Object> callback;
         public Object argument;
         public long targetTime;
         public int index;
@@ -25,7 +29,7 @@ public class Scheduler {
          * @param argument Argument object passed to callback
          * @param targetTime Time in cycles at which to execute the task
          */
-        public Task(BiConsumer<Long, Object> callback, Object argument, long targetTime) {
+        public Task(UncheckedBiConsumer<Long, Object> callback, Object argument, long targetTime) {
             this.callback = callback;
             this.argument = argument;
             this.targetTime = targetTime;
@@ -35,7 +39,7 @@ public class Scheduler {
         /**
          * Executes this task
          */
-        public void execute() {
+        public void execute() throws Exception {
             callback.accept(targetTime, argument);
         }
     }
@@ -44,6 +48,9 @@ public class Scheduler {
      * Priority queue of pending tasks
      */
     public static class Heap {
+
+        public static Task lookout = null;
+
         public ArrayList<Task> heap = new ArrayList<>();
 
         /**
@@ -92,7 +99,7 @@ public class Scheduler {
          * @return task
          */
         public Task add(Task task) {
-            if (task.index >= 0) {
+            if (task == null || task.index >= 0) {
                 return task;
             }
             task.index = heap.size();
@@ -164,7 +171,7 @@ public class Scheduler {
      * Execute all ready tasks
      * @param cycles Number of cycles since the last time it was called
      */
-    public void update(int cycles) {
+    public void update(int cycles) throws Exception {
         cyclesExecuted += cycles;
         while (!heap.isEmpty() && heap.head().targetTime <= cyclesExecuted) {
             Task task = heap.pop();
@@ -178,7 +185,7 @@ public class Scheduler {
      * @param currentCycles Current timestamp to start skipping from
      * @return The new timestamp after skipping
      */
-    public long skip(long currentCycles) {
+    public long skip(long currentCycles) throws Exception {
         if (heap.isEmpty()) {
             return currentCycles;
         }

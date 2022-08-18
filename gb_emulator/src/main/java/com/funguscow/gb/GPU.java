@@ -389,98 +389,6 @@ public class GPU {
     }
 
     /**
-     * Move GPU ahead a number of cycles, progressing mode as needed
-     * @param cycles Cycles to increment (m-cycles)
-     * @param silent When the APU is active, it handles timing. Otherwise, the GPU should
-     */
-    public void increment(int cycles, boolean silent){
-        if (true)
-            return;
-        if (!lcdOn) {
-            mode = 0;
-            modeCycles = 0;
-            line = 0;
-            return;
-        }
-        modeCycles += cycles;
-        switch(mode){
-            case 0: // Hblank
-                if(modeCycles >= 51){
-                    modeCycles -= 51;
-                    incrementLine();
-                    if(line == lyc) {
-                        lycCoincidence = true;
-                        if(lycInt) {
-                            machine.interruptsFired |= 0x2;
-                        }
-                    }
-                    else {
-                        lycCoincidence = false;
-                    }
-                    if(line < 144) {
-                        if(oamInt) {
-                            machine.interruptsFired |= 0x2;
-                        }
-                        mode = 2;
-                    }
-                    else {
-                        doDraw();
-                        machine.interruptsFired |= 1; // Vblank interrupt
-                        if(vblankInt) {
-                            machine.interruptsFired |= 0x2;
-                        }
-                        mode = 1;
-                        machine.mmu.onVblank();
-                        long passed = System.currentTimeMillis() - lastVBlank;
-                        long targetWait = MS_BETWEEN_VBLANKS / machine.speedUp - passed;
-                        if (targetWait > WAIT_THRESHOLD && silent) {
-                            try {
-                                Thread.sleep(targetWait);
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }
-                    }
-                }
-                break;
-            case 1: // Vblank
-                if(modeCycles >= 114){
-                    modeCycles -= 114;
-                    incrementLine();
-                    if(line >= 154) {
-                        if(oamInt) {
-                            machine.interruptsFired |= 0x2;
-                        }
-                        mode = 2;
-                        line = 0;
-                        windowLine = 0;
-                        lastVBlank = System.currentTimeMillis();
-                    }
-                }
-                break;
-            case 2: // OAM
-                if(modeCycles >= 20){
-                    modeCycles -= 20;
-                    mode = 3;
-                }
-                break;
-            case 3: // VRAM
-                if(modeCycles >= 43){
-                    modeCycles -= 43;
-                    mode = 0;
-                    if (cgb) {
-                        machine.mmu.onHblank();
-                    }
-                    scanline();
-                    if(hblankInt) {
-                        machine.interruptsFired |= 0x2;
-                    }
-                }
-                break;
-        }
-    }
-
-    /**
      * Increment the line and windowline as appropriate
      */
     private void incrementLine() {
@@ -933,40 +841,6 @@ public class GPU {
         }
         lastTimestamp = machine.getCyclesExecuted();
         initState();
-//        switch (mode) {
-//            case 0: // HBlank
-//                tasks.add(
-//                        machine.scheduler.add(
-//                                new Scheduler.Task(this::scheduledEndHblank,
-//                                        null,
-//                                        lastTimestamp + HBLANK_CYCLES - modeCycles
-//                                )));
-//                break;
-//            case 1: // VBlank
-//                tasks.add(
-//                        machine.scheduler.add(
-//                                new Scheduler.Task(this::scheduledVblankLine,
-//                                        null,
-//                                        lastTimestamp + VBLANK_CYCLES - modeCycles
-//                                )));
-//                break;
-//            case 2: // OAM
-//                tasks.add(
-//                        machine.scheduler.add(
-//                                new Scheduler.Task(this::scheduledTransitionOamVram,
-//                                        null,
-//                                        lastTimestamp + OAM_CYCLES - modeCycles
-//                                )));
-//                break;
-//            case 3: // VRAM
-//                tasks.add(
-//                        machine.scheduler.add(
-//                                new Scheduler.Task(this::scheduledTransitionVramHblank,
-//                                        null,
-//                                        lastTimestamp + VRAM_CYCLES - modeCycles
-//                                )));
-//                break;
-//        }
     }
 
     /**

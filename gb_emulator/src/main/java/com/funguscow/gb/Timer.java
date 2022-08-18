@@ -100,7 +100,9 @@ public class Timer {
      */
     public void save(DataOutputStream dos) throws IOException {
         dos.write("TIME".getBytes(StandardCharsets.UTF_8));
+        printDebugState();
         updateEarly();
+        printDebugState();
         dos.writeInt(divider);
         dos.writeInt(tima);
         dos.writeInt(tma);
@@ -118,16 +120,22 @@ public class Timer {
         tima = dis.readInt();
         tma = dis.readInt();
         tac = dis.readInt();
+        lastTimestamp = machine.getCyclesExecuted();
         pendingOverflow = dis.readBoolean();
-        if (pendingOverflow && (tac & 4) != 0) {
-            tasks.add(
-                    machine.scheduler.add(
-                            new Scheduler.Task(
-                                    this::reloadTima,
-                                    null,
-                                    machine.getCyclesExecuted() + 1
-                            )));
+        if ((tac & 4) != 0) {
+            if (pendingOverflow) {
+                tasks.add(
+                        machine.scheduler.add(
+                                new Scheduler.Task(
+                                        this::reloadTima,
+                                        null,
+                                        lastTimestamp + 1
+                                )));
+            } else {
+                scheduleTimaOverflow();
+            }
         }
+        printDebugState();
     }
 
     /**

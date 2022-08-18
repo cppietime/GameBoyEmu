@@ -4,9 +4,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.stream.IntStream;
 
 /**
@@ -173,6 +171,8 @@ public class SoundBoard {
     public SoundBoard(Machine m, int bufferSize) {
         machine = m;
         this.bufferSize = bufferSize;
+        lastTimestamp = m.getCyclesExecuted();
+        scheduledTimerTick(lastTimestamp, null);
     }
 
     public SoundBoard(Machine m) {
@@ -194,7 +194,19 @@ public class SoundBoard {
             if (format.rightChannel) {
                 rightBuffer = new byte[bufferSize];
             }
+            updateCounters(machine.getCyclesExecuted());
+            machine.scheduler.cancel(tasks[TASK_SAMPLE]);
+            tasks[TASK_SAMPLE] = machine.scheduler.add(new Scheduler.Task(this::scheduledSample, null, lastTimestamp + getCyclesPerSample()));
         }
+    }
+
+    public void mute(boolean mute) {
+        silent = mute;
+//        if (!silent) {
+//            updateCounters(machine.getCyclesExecuted());
+//            machine.scheduler.cancel(tasks[TASK_SAMPLE]);
+//            tasks[TASK_SAMPLE] = machine.scheduler.add(new Scheduler.Task(this::scheduledSample, null, lastTimestamp + getCyclesPerSample()));
+//        }
     }
 
     /**
@@ -335,6 +347,9 @@ public class SoundBoard {
                     if (length1 == 0) {
                         length1 = 64;
                     }
+                    machine.scheduler.cancel(tasks[TASK_FREQ1]);
+                    updateCounters(machine.getCyclesExecuted());
+                    tasks[TASK_FREQ1] = machine.scheduler.add(new Scheduler.Task(this::scheduledFreq1, null, lastTimestamp + frequencyCounter1));
                 }
                 break;
             case 0x6:
@@ -360,6 +375,9 @@ public class SoundBoard {
                     frequencyCounter2 = 2048 - frequencyDivisor2;
                     waveCounter2 = 0;
                     envelopeCounter2 = 0;
+                    machine.scheduler.cancel(tasks[TASK_FREQ2]);
+                    updateCounters(machine.getCyclesExecuted());
+                    tasks[TASK_FREQ2] = machine.scheduler.add(new Scheduler.Task(this::scheduledFreq2, null, lastTimestamp + frequencyCounter2));
                 }
                 break;
             case 0xA:
@@ -383,6 +401,9 @@ public class SoundBoard {
                 if (enable3) {
                     frequencyCounter3 = 1024 - frequencyDivisor3 / 2;
                     wavePtr = 0;
+                    machine.scheduler.cancel(tasks[TASK_FREQ3]);
+                    updateCounters(machine.getCyclesExecuted());
+                    tasks[TASK_FREQ3] = machine.scheduler.add(new Scheduler.Task(this::scheduledFreq3, null, lastTimestamp + frequencyCounter3));
                 }
                 break;
             case 0x10:
@@ -406,6 +427,9 @@ public class SoundBoard {
                     frequencyCounter4 = (frequencyDivisor4 == 0 ? 8 : (frequencyDivisor4 << 4)) << frequencyShift4;
                     envelope4 = initialEnvelope4;
                     envelopeCounter4 = 0;
+                    machine.scheduler.cancel(tasks[TASK_FREQ4]);
+                    updateCounters(machine.getCyclesExecuted());
+                    tasks[TASK_FREQ4] = machine.scheduler.add(new Scheduler.Task(this::scheduledFreq4, null, lastTimestamp + frequencyCounter4));
                 }
                 break;
             case 0x14:
@@ -442,98 +466,14 @@ public class SoundBoard {
     }
 
     /**
-     * Increment the internal timer and update values
-     * @param cycles Number of cycles since last call to this method
+     * Advance the LFSR for noise generation
      */
-    private void incrementTimer(int cycles) {
-        /*
-         * TODO Convert this all to be scheduler-based
-         * The events that will need to be scheduled to replace this:
-         * Increment waveCounter1 (reset frequencyCounter1)
-         * Increment waveCounter2 (reset frequencyCounter2)
-         * Increment wavePtr (reset frequencyCounter3)
-         * Advance lfsr4 (reset frequencyCounter4)
-         * Tick the frame sequencer, which will do each of the following:
-         *      Decrement all length counters
-         *      Advance frequency sweep
-         *      Advance all envelopes
-         *
-         * Not part of this function, but I will also need an event for generating a sample
-         */
-        while (cycles > 0) {
-            cycleCounter++;
-            cycles --;
-            if (--frequencyCounter1 <= 0) {
-                frequencyCounter1 = 2048 - frequencyDivisor1;
-                waveCounter1 = (waveCounter1 + 1) & 7;
-            }
-            if (--frequencyCounter2 <= 0) {
-                frequencyCounter2 = 2048 - frequencyDivisor2;
-                waveCounter2 = (waveCounter2 + 1) & 7;
-            }
-            frequencyCounter3 -= 2;
-            if (frequencyCounter3 <= 0) {
-                frequencyCounter3 = 2048 - frequencyDivisor3;
-                wavePtr = (wavePtr + 1) & 31;
-            }
-            if (--frequencyCounter4 <= 0) {
-                frequencyCounter4 = (frequencyDivisor4 == 0 ? 8 : (frequencyDivisor4 << 4)) << frequencyShift4;
-                int xor = (lfsr4 & 1) ^ ((lfsr4 >> 1) & 1);
-                lfsr4 = (lfsr4 >> 1) | (xor << 14);
-                if (lowBitWidth4) {
-                    lfsr4 &= ~0x40;
-                    lfsr4 |= xor << 6;
-                }
-            }
-            if ((cycleCounter & 0xfff) == 0) {
-                if (length1 > 0 && useLength1)
-                    length1 --;
-                if (length2 > 0 && useLength2)
-                    length2 --;
-                if (length3 > 0 && useLength3)
-                    length3 --;
-                if (length4 > 0 && useLength4)
-                    length4 --;
-                if ((cycleCounter & 0x1fff) == 0x1000 && sweepFrequency1 != 0) {
-                    sweepCounter1++;
-                    if (sweepCounter1 == sweepFrequency1) {
-                        sweepCounter1 = 0;
-                        int deltaFreq = (sweepAscending1 ? -1 : 1) * (frequencyDivisor1 >> sweepShift1);
-                        int newFreq = frequencyDivisor1 + deltaFreq;
-                        if (newFreq > 0x7ff) {
-                            enable1 = false;
-                        } else {
-                            frequencyDivisor1 = newFreq;
-                        }
-                    }
-                }
-            }
-            else if ((cycleCounter & 0x3fff) == 0x3fff) {
-                if (envelopeSweep1 != 0) {
-                    envelopeCounter1++;
-                    if (envelopeCounter1 == envelopeSweep1) {
-                        envelopeCounter1 = 0;
-                        envelope1 += (envelopeAscending1 ? 1 : -1);
-                        envelope1 = Math.min(0xf, Math.max(0, envelope1));
-                    }
-                }
-                if (envelopeSweep2 != 0) {
-                    envelopeCounter2++;
-                    if (envelopeCounter2 == envelopeSweep2) {
-                        envelopeCounter2 = 0;
-                        envelope2 += (envelopeAscending2 ? 1 : -1);
-                        envelope2 = Math.min(0xf, Math.max(0, envelope2));
-                    }
-                }
-                if (envelopeSweep4 != 0) {
-                    envelopeCounter4++;
-                    if (envelopeCounter4 == envelopeSweep4) {
-                        envelopeCounter4 = 0;
-                        envelope4 += (envelopeAscending4 ? 1 : -1);
-                        envelope4 = Math.min(0xf, Math.max(0, envelope4));
-                    }
-                }
-            }
+    private void advanceNoise() {
+        int xor = (lfsr4 & 1) ^ ((lfsr4 >> 1) & 1);
+        lfsr4 = (lfsr4 >> 1) | (xor << 14);
+        if (lowBitWidth4) {
+            lfsr4 &= ~0x40;
+            lfsr4 |= xor << 6;
         }
     }
 
@@ -611,34 +551,12 @@ public class SoundBoard {
             right += c4;
         left = (left * volumeLeft) >> 3;
         right = (right * volumeRight) >> 3;
-        leftBuffer[bufferPtr] = (byte)left;
-        rightBuffer[bufferPtr] = (byte)right;
+        leftBuffer[bufferPtr] = (byte) left;
+        rightBuffer[bufferPtr] = (byte) right;
         bufferPtr++;
-    }
-
-    /**
-     * Called periodically from the machine to play sound
-     * @param cycles Number of m-cycles that have passed
-     * @param timeDivisor Speedup factor
-     * @param doubleSpeed If true, half as many samples are to be generated
-     */
-    public void step(int cycles, int timeDivisor, boolean doubleSpeed) {
-        incrementTimer(cycles);
-        if (speaker == null || silent) {
-            return;
-        }
-        latentCycles += (long) cycles * format.sampleRate;
-        int numSamples = (int)(latentCycles >> 20) / timeDivisor;
-        if (doubleSpeed) {
-            numSamples >>= 1;
-        }
-        for (int i = 0; i < numSamples; i++) {
-            latentCycles -= (long) timeDivisor << 20;
-            writeSample();
-            if (bufferPtr == bufferSize) {
-                bufferPtr = 0;
-                speaker.consume(leftBuffer, rightBuffer, bufferSize);
-            }
+        if (bufferPtr == bufferSize) {
+            bufferPtr = 0;
+            speaker.consume(leftBuffer, rightBuffer, bufferSize);
         }
     }
 
@@ -649,6 +567,7 @@ public class SoundBoard {
      */
     public void save(DataOutputStream dos) throws IOException {
         dos.write("APU ".getBytes(StandardCharsets.UTF_8));
+        updateCounters(machine.getCyclesExecuted());
         dos.writeLong(latentCycles);
         dos.writeInt(sweepFrequency1);
         dos.writeBoolean(sweepAscending1);
@@ -775,6 +694,27 @@ public class SoundBoard {
         mapRight = dis.readInt();
         masterEnable = dis.readBoolean();
         cycleCounter = dis.readInt();
+        lastTimestamp = machine.getCyclesExecuted();
+        tasks[TASK_FREQ1] = machine.scheduler.add(
+                new Scheduler.Task(this::scheduledFreq1, null, lastTimestamp + frequencyCounter1)
+        );
+        tasks[TASK_FREQ2] = machine.scheduler.add(
+                new Scheduler.Task(this::scheduledFreq2, null, lastTimestamp + frequencyCounter2)
+        );
+        tasks[TASK_FREQ3] = machine.scheduler.add(
+                new Scheduler.Task(this::scheduledFreq3, null, lastTimestamp + frequencyCounter3)
+        );
+        tasks[TASK_FREQ4] = machine.scheduler.add(
+                new Scheduler.Task(this::scheduledFreq4, null, lastTimestamp + frequencyCounter4)
+        );
+        tasks[TASK_TIMER] = machine.scheduler.add(
+                new Scheduler.Task(this::scheduledTimerTick, null, lastTimestamp + CYCLES_PER_TIMER_TICK - cycleCounter)
+        );
+        if (!silent && speaker != null) {
+            tasks[TASK_SAMPLE] = machine.scheduler.add(
+                    new Scheduler.Task(this::scheduledSample, null, lastTimestamp + getCyclesPerSample())
+            );
+        }
     }
 
     // Scheduler methods
@@ -783,7 +723,7 @@ public class SoundBoard {
         Arrays.fill(tasks, null);
     }
 
-    private void invalidateTasks() {
+    public void invalidateTasks() {
         Arrays.fill(tasks, null);
     }
 
@@ -791,10 +731,71 @@ public class SoundBoard {
         IntStream.range(0, NUM_TASKS).filter(i -> tasks[i].index < 0).forEach(i -> tasks[i] = null);
     }
 
+    private void updateCounters(long cycles) {
+        int passed = (int)(cycles - lastTimestamp);
+        frequencyCounter1 -= passed;
+        frequencyCounter2 -= passed;
+        frequencyCounter3 -= passed;
+        frequencyCounter4 -= passed;
+        cycleCounter += passed;
+        lastTimestamp = cycles;
+    }
+
     /**
      * Called when the frame sequencer issues a tick
      */
     private void scheduledTimerTick(long cycles, Object obj) {
+        updateCounters(cycles);
+        if ((cycleCounter & 0xfff) == 0) {
+            if (length1 > 0 && useLength1)
+                length1 --;
+            if (length2 > 0 && useLength2)
+                length2 --;
+            if (length3 > 0 && useLength3)
+                length3 --;
+            if (length4 > 0 && useLength4)
+                length4 --;
+            if ((cycleCounter & 0x1fff) == 0x1000 && sweepFrequency1 != 0) {
+                sweepCounter1++;
+                if (sweepCounter1 == sweepFrequency1) {
+                    sweepCounter1 = 0;
+                    int deltaFreq = (sweepAscending1 ? -1 : 1) * (frequencyDivisor1 >> sweepShift1);
+                    int newFreq = frequencyDivisor1 + deltaFreq;
+                    if (newFreq > 0x7ff) {
+                        enable1 = false;
+                    } else {
+                        frequencyDivisor1 = newFreq;
+                    }
+                }
+            }
+        }
+        else if ((cycleCounter & 0x3fff) == 0x3800) {
+            if (envelopeSweep1 != 0) {
+                envelopeCounter1++;
+                if (envelopeCounter1 == envelopeSweep1) {
+                    envelopeCounter1 = 0;
+                    envelope1 += (envelopeAscending1 ? 1 : -1);
+                    envelope1 = Math.min(0xf, Math.max(0, envelope1));
+                }
+            }
+            if (envelopeSweep2 != 0) {
+                envelopeCounter2++;
+                if (envelopeCounter2 == envelopeSweep2) {
+                    envelopeCounter2 = 0;
+                    envelope2 += (envelopeAscending2 ? 1 : -1);
+                    envelope2 = Math.min(0xf, Math.max(0, envelope2));
+                }
+            }
+            if (envelopeSweep4 != 0) {
+                envelopeCounter4++;
+                if (envelopeCounter4 == envelopeSweep4) {
+                    envelopeCounter4 = 0;
+                    envelope4 += (envelopeAscending4 ? 1 : -1);
+                    envelope4 = Math.min(0xf, Math.max(0, envelope4));
+                }
+            }
+        }
+        machine.scheduler.cancel(tasks[TASK_TIMER]);
         tasks[TASK_TIMER] = machine.scheduler.add(new Scheduler.Task(this::scheduledTimerTick, null, cycles + CYCLES_PER_TIMER_TICK));
     }
 
@@ -802,23 +803,44 @@ public class SoundBoard {
      * Called when ready to produce a sample
      */
     private void scheduledSample(long cycles, Object obj) {
+        updateCounters(cycles);
+        if (!silent && speaker != null) {
+            writeSample();
+        }
+        machine.scheduler.cancel(tasks[TASK_SAMPLE]);
         tasks[TASK_SAMPLE] = machine.scheduler.add(new Scheduler.Task(this::scheduledSample, null, cycles + getCyclesPerSample()));
     }
 
     private void scheduledFreq1(long cycles, Object obj) {
-        tasks[TASK_FREQ1] = machine.scheduler.add(new Scheduler.Task(this::scheduledFreq1, null, cycles + 2048 - frequencyDivisor1));
+        updateCounters(cycles);
+        waveCounter1 = (waveCounter1 + 1) & 7;
+        frequencyCounter1 = 2048 - frequencyDivisor1;
+        machine.scheduler.cancel(tasks[TASK_FREQ1]);
+        tasks[TASK_FREQ1] = machine.scheduler.add(new Scheduler.Task(this::scheduledFreq1, null, cycles + frequencyCounter1));
     }
 
     private void scheduledFreq2(long cycles, Object obj) {
-
+        updateCounters(cycles);
+        waveCounter2 = (waveCounter2 + 1) & 7;
+        frequencyCounter2 = 2048 - frequencyDivisor2;
+        machine.scheduler.cancel(tasks[TASK_FREQ2]);
+        tasks[TASK_FREQ2] = machine.scheduler.add(new Scheduler.Task(this::scheduledFreq2, null, cycles + frequencyCounter2));
     }
 
     private void scheduledFreq3(long cycles, Object obj) {
-
+        updateCounters(cycles);
+        wavePtr = (wavePtr + 1) & 31;
+        frequencyCounter3 = 2048 - frequencyDivisor3;
+        machine.scheduler.cancel(tasks[TASK_FREQ3]);
+        tasks[TASK_FREQ3] = machine.scheduler.add(new Scheduler.Task(this::scheduledFreq3, null, cycles + frequencyCounter3));
     }
 
     private void scheduledFreq4(long cycles, Object obj) {
-
+        updateCounters(cycles);
+        advanceNoise();
+        frequencyCounter4 = (frequencyDivisor4 == 0 ? 8 : (frequencyDivisor4 << 4)) << frequencyShift4;
+        machine.scheduler.cancel(tasks[TASK_FREQ4]);
+        tasks[TASK_FREQ4] = machine.scheduler.add(new Scheduler.Task(this::scheduledFreq4, null, cycles + frequencyCounter4));
     }
 
 }

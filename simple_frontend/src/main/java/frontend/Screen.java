@@ -213,8 +213,8 @@ public class Screen extends Canvas implements GPU.GameboyScreen, KeyListener {
     }
 
     public static void mainFunc() throws Exception {
-        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
-//        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
+//        String ROMPath = "D:\\Games\\GBA\\gbtest\\mario_land.gb";
+        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon red.gb";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon yellow.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon gold.gbc";
 //        String ROMPath = "D:\\Games\\GBA\\pokemon\\vanilla\\Pokemon crystal.gbc";

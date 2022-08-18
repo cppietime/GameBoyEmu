@@ -60,4 +60,30 @@ public class HeapTest {
         assert(outD == b);
     }
 
+    @Test
+    public void testSimilar() {
+        Scheduler.Heap heap = new Scheduler.Heap();
+        Scheduler.Task a = new Scheduler.Task(null, null, 0);
+        Scheduler.Task b = new Scheduler.Task(null, null, 10);
+        Scheduler.Task c = new Scheduler.Task(null, null, 3);
+        Scheduler.Task d = new Scheduler.Task(null, null, 3);
+        Scheduler.Task e = new Scheduler.Task(null, null, 9);
+        heap.add(a);
+        heap.add(b);
+        heap.add(c);
+        heap.add(d);
+        heap.add(e);
+        System.out.printf("%d %d %d %d %d\n", a.index, b.index, c.index, d.index, e.index);
+        Scheduler.Task outA = heap.pop();
+        System.out.printf("%d %d %d %d %d\n", a.index, b.index, c.index, d.index, e.index);
+        Scheduler.Task outB = heap.pop();
+        System.out.printf("%d %d %d %d %d\n", a.index, b.index, c.index, d.index, e.index);
+        Scheduler.Task outC = heap.pop();
+        System.out.printf("%d %d %d %d %d\n", a.index, b.index, c.index, d.index, e.index);
+        Scheduler.Task outD = heap.pop();
+        System.out.printf("%d %d %d %d %d\n", a.index, b.index, c.index, d.index, e.index);
+        Scheduler.Task outE = heap.pop();
+        System.out.printf("%d %d %d %d %d\n", a.index, b.index, c.index, d.index, e.index);
+    }
+
 }
